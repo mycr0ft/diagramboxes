@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15.0 -15.0 168.0 279.0" width="168.0pt" height="279.0pt">
+<rect x="12.0" y="12.0" width="108.0" height="219.0" rx="7.5" ry="7.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="66.0" y="24.0" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">«state def»</text>
+<text x="66.0" y="31.5" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">SM</text>
+<rect x="46.5" y="48.0" width="39.0" height="27.0" rx="6.0" ry="6.0" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="66.0" y="60.0" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">«state»</text>
+<text x="66.0" y="67.5" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">Idle</text>
+<rect x="18.0" y="84.0" width="96.0" height="105.0" rx="7.5" ry="7.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="66.0" y="96.0" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">«state»</text>
+<text x="66.0" y="103.5" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">Running</text>
+<rect x="24.0" y="120.0" width="39.0" height="27.0" rx="6.0" ry="6.0" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="43.5" y="132.0" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">«state»</text>
+<text x="43.5" y="139.5" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">Spinning</text>
+<rect x="69.0" y="120.0" width="39.0" height="27.0" rx="6.0" ry="6.0" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="88.5" y="132.0" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">«state»</text>
+<text x="88.5" y="139.5" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">Stopped</text>
+<circle cx="66.0" cy="169.5" r="12.0" fill="none" stroke="#1a1a1a" />
+<circle cx="66.0" cy="169.5" r="6.0" fill="#1a1a1a" stroke="#1a1a1a" />
+<circle cx="66.0" cy="211.5" r="12.0" fill="#1a1a1a" stroke="#1a1a1a" />
+<polyline points="66.0,198.0 66.0,75.0" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<polyline points="66.0,75.0 66.0,73.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<line x1="66.0" y1="84.0" x2="71.2" y2="74.9" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<line x1="66.0" y1="84.0" x2="60.8" y2="74.9" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<text x="84.0" y="79.5" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">t1</text>
+<polyline points="114.0,130.5 79.5,136.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<line x1="69.0" y1="136.5" x2="78.7" y2="140.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<line x1="69.0" y1="136.5" x2="77.3" y2="130.1" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<text x="88.5" y="109.5" fill="#1a1a1a" font-size="5.0" font-family="monospace" text-anchor="middle">t2</text>
+<polyline points="52.5,147.0 57.0,156.0" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+</svg>

@@ -146,6 +146,10 @@ class Node:
         self.rounded = rounded
         self.dashed = dashed
         self.ports = []
+        # Composite-structure nesting (v0.4.0): a node may own child nodes
+        # drawn *inside* its box (e.g. composite states, part assemblies).
+        self.parent = None
+        self.children = []
         self.x = self.y = self.w = self.h = 0
         self._calc_size()
 
@@ -172,6 +176,20 @@ class Node:
     def add_attribute(self, text):
         self.attributes.append(text)
         self._calc_size()
+
+    def add_child(self, node):
+        """Nest ``node`` inside this node (composite structure, v0.4.0).
+
+        The child keeps its own box; the layout engine inflates this
+        node's size to contain it and places children in rows below the
+        title/attribute area.  Edges between siblings of the same parent
+        are routed inside the parent; edges crossing the boundary are
+        re-anchored to the outermost ancestor (UML composite-structure
+        convention).
+        """
+        node.parent = self
+        self.children.append(node)
+        return node
 
     @property
     def cx(self):
@@ -236,6 +254,7 @@ class StartNode:
         d = self.r * 2 + 2
         self.w = self.h = d
         self.x = self.y = 0
+        self.parent = None  # composite-structure parent (v0.4.0)
 
     @property
     def cx(self):
@@ -264,6 +283,7 @@ class DoneNode:
         d = self.r * 2 + 2
         self.w = self.h = d
         self.x = self.y = 0
+        self.parent = None  # composite-structure parent (v0.4.0)
 
     @property
     def cx(self):
@@ -292,6 +312,7 @@ class TerminateNode:
         d = self.r * 2 + 2
         self.w = self.h = d
         self.x = self.y = 0
+        self.parent = None  # composite-structure parent (v0.4.0)
 
     @property
     def cx(self):
@@ -323,6 +344,7 @@ class ForkJoinNode:
         self.w = w
         self.h = h
         self.x = self.y = 0
+        self.parent = None  # composite-structure parent (v0.4.0)
 
     @property
     def cx(self):
@@ -351,6 +373,7 @@ class DecisionNode:
         self.w = size
         self.h = size
         self.x = self.y = 0
+        self.parent = None  # composite-structure parent (v0.4.0)
 
     @property
     def cx(self):
@@ -487,6 +510,7 @@ class HistoryPseudostate:
         d = r * 2 + 2
         self.w = self.h = d
         self.x = self.y = 0
+        self.parent = None  # composite-structure parent (v0.4.0)
 
     @property
     def cx(self):
@@ -739,7 +763,8 @@ class Diagram:
         self.activities = []
         self.edges = []
 
-    def add_node(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False):
+    def add_node(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
+                 parent=None):
         """Create a new node and register it with the diagram.
 
         Parameters
@@ -754,6 +779,10 @@ class Diagram:
             If True, draw with rounded corners (e.g. SysMLv2 part usages).
         dashed : bool, optional
             If True, draw border with dashed lines (e.g. occurrence refs).
+        parent : Node, optional
+            If given, the new node is nested inside ``parent`` as a
+            composite-structure child (v0.4.0) instead of being laid out
+            as a top-level node.
 
         Returns
         -------
@@ -761,6 +790,8 @@ class Diagram:
             The newly created node.
         """
         n = Node(name, stereotypes, attributes, rounded, dashed)
+        if parent is not None:
+            parent.add_child(n)
         self.nodes.append(n)
         return n
 
@@ -810,7 +841,7 @@ class Diagram:
         self.views.append(v)
         return v
 
-    def add_start(self, name='Start'):
+    def add_start(self, name='Start', parent=None):
         """Add an activity start node (filled circle).
 
         Parameters
@@ -823,10 +854,12 @@ class Diagram:
         StartNode
         """
         n = StartNode(name)
+        if parent is not None:
+            n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
-    def add_done(self, name='Done'):
+    def add_done(self, name='Done', parent=None):
         """Add an activity done / accept node (bullseye).
 
         Parameters
@@ -839,10 +872,12 @@ class Diagram:
         DoneNode
         """
         n = DoneNode(name)
+        if parent is not None:
+            n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
-    def add_terminate(self, name='Terminate'):
+    def add_terminate(self, name='Terminate', parent=None):
         """Add an activity terminate node (circle with X).
 
         Parameters
@@ -855,6 +890,8 @@ class Diagram:
         TerminateNode
         """
         n = TerminateNode(name)
+        if parent is not None:
+            n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
@@ -994,7 +1031,7 @@ class Diagram:
         self.activities.append(n)
         return n
 
-    def add_final_state(self, name='final'):
+    def add_final_state(self, name='final', parent=None):
         """Add a state-machine final state (bullseye).
 
         Returns
@@ -1002,10 +1039,12 @@ class Diagram:
         FinalState
         """
         n = FinalState(name=name)
+        if parent is not None:
+            n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
-    def add_terminate(self, name='terminate', kind='state'):
+    def add_terminate(self, name='terminate', kind='state', parent=None):
         """Add a state-machine terminate pseudostate (open circle with X).
 
         ``kind`` is accepted for forward compatibility — activity terminate
@@ -1017,6 +1056,8 @@ class Diagram:
         TerminatePseudostate
         """
         n = TerminatePseudostate(name=name)
+        if parent is not None:
+            n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
@@ -1225,11 +1266,162 @@ class Diagram:
         return self.add_edge(child, parent, **kw)
 
     def _child_nodes(self):
-        """Return set of all nodes that are children of a View."""
+        """Return set of all nodes that are children of a View or nested
+        inside a composite Node (v0.4.0)."""
         children = set()
         for v in self.views:
             children.update(v.children)
+        children.update(self._node_descendants())
         return children
+
+    def _node_descendants(self):
+        """All nodes nested inside composite nodes (transitive, v0.4.0)."""
+        desc = set()
+
+        def walk(n):
+            for c in n.children:
+                desc.add(c)
+                walk(c)
+
+        for n in self.nodes:
+            walk(n)
+        return desc
+
+    # ── composite-node (nested) layout ──────────────────────────
+
+    _NEST_PAD = 4        # inner padding around the children area
+    _NEST_GAP = 4        # horizontal gap between children in a row
+    _NEST_ROW_GAP = 6    # vertical gap between rows of children
+    _NEST_MAX_ROW = 64   # wrap row when it exceeds this width
+
+    @classmethod
+    def _pack_rows(cls, items):
+        """Greedy row packing: items wider than the row budget wrap."""
+        rows, cur, cur_w = [], [], 0
+        for it in items:
+            if cur and cur_w + cls._NEST_GAP + it.w > cls._NEST_MAX_ROW:
+                rows.append(cur)
+                cur, cur_w = [], 0
+            cur.append(it)
+            cur_w += it.w if len(cur) == 1 else cls._NEST_GAP + it.w
+        if cur:
+            rows.append(cur)
+        return rows or [[]]
+
+    def _size_nested_tree(self, node=None):
+        """Post-order: inflate composite nodes to contain their children.
+
+        Leaf sizes come from ``_calc_size()``; composites store their
+        original text area in ``_text_w``/``_text_h`` and the packed rows
+        in ``_rows`` so ``_place_nested_tree`` can position children.
+        Parented activities (pseudostates inside a composite) participate
+        in the same row packing as child nodes.
+        """
+        if node is None:
+            for n in self.nodes:
+                if n.parent is None:
+                    self._size_nested_tree(n)
+            return
+        for c in node.children:
+            self._size_nested_tree(c)
+        items = list(node.children) + [
+            a for a in self.activities if getattr(a, 'parent', None) is node]
+        # Normalize to the pure text size first — makes repeated sizing
+        # idempotent (the previous inflation is discarded each pass).
+        node._calc_size()
+        if not items:
+            node._rows = []
+            node._text_w, node._text_h = node.w, node.h
+            return
+        node._text_w, node._text_h = node.w, node.h
+        rows = self._pack_rows(items)
+        node._rows = rows
+        row_ws = [sum(c.w for c in r) + self._NEST_GAP * (len(r) - 1)
+                  for r in rows]
+        inner_w = max(row_ws)
+        inner_h = sum(max(c.h for c in r) for r in rows) \
+            + self._NEST_ROW_GAP * (len(rows) - 1)
+        node.w = max(node._text_w, inner_w + 2 * self._NEST_PAD)
+        node.h = node._text_h + self._NEST_PAD + 2 + inner_h \
+            + self._NEST_PAD
+
+    def _place_nested_tree(self, node=None):
+        """Position children rows inside their composite parent (top-down)."""
+        if node is None:
+            for n in self.nodes:
+                if n.parent is None:
+                    self._place_nested_tree(n)
+            return
+        rows = getattr(node, '_rows', None)
+        if not rows:
+            return
+        top = node.y + node._text_h + self._NEST_PAD + 2
+        for r in rows:
+            rh = max(c.h for c in r)
+            rw = sum(c.w for c in r) + self._NEST_GAP * (len(r) - 1)
+            x = node.x + (node.w - rw) // 2
+            for c in r:
+                c.x = x
+                c.y = top + (rh - c.h) // 2
+                x += c.w + self._NEST_GAP
+            top += rh + self._NEST_ROW_GAP
+        for c in node.children:
+            self._place_nested_tree(c)
+
+    @staticmethod
+    def _top_ancestor(n):
+        """Outermost composite ancestor of ``n`` (itself if top-level)."""
+        while getattr(n, 'parent', None) is not None:
+            n = n.parent
+        return n
+
+    @staticmethod
+    def _boundary_point(node, tx, ty):
+        """Point on ``node``'s border on the segment toward (tx, ty)."""
+        dx, dy = tx - node.cx, ty - node.cy
+        if dx == 0 and dy == 0:
+            return (node.x + node.w, node.cy)
+        t = min(node.w / 2 / abs(dx) if dx else float('inf'),
+                node.h / 2 / abs(dy) if dy else float('inf'))
+        return (round(node.cx + dx * t), round(node.cy + dy * t))
+
+    def _reanchor_nested_edges(self):
+        """Pre-pass: adjust edge endpoints for composite nesting (v0.4.0).
+
+        - Both endpoints under the same outermost ancestor: the edge is
+          internal — routed as a straight boundary-to-boundary segment
+          (clipped at each child box) and marked ``_nested_internal``.
+        - Endpoints under different ancestors: the edge is re-anchored to
+          the two outermost ancestors (original endpoints kept in
+          ``_nested_orig``) so the engine routes across the parent
+          boundary, per UML composite-structure convention.
+        """
+        desc = self._node_descendants()
+        for e in self.edges:
+            s, t = e.source, e.target
+            s_nested = s in desc or getattr(s, 'parent', None) is not None
+            t_nested = t in desc or getattr(t, 'parent', None) is not None
+            if not s_nested and not t_nested:
+                continue
+            sa, ta = self._top_ancestor(s), self._top_ancestor(t)
+            if sa is ta:
+                sx, sy = self._boundary_point(s, t.cx, t.cy)
+                tx, ty = self._boundary_point(t, s.cx, s.cy)
+                e.route((sx, sy), (tx, ty))
+                e._nested_internal = True
+            elif sa is not s or ta is not t:
+                e._nested_orig = (s, t)
+                e.source, e.target = sa, ta
+
+    def _refresh_internal_edges(self):
+        """Recompute internal (same-composite) edge waypoints after children
+        have been placed (v0.4.0)."""
+        for e in self.edges:
+            if getattr(e, '_nested_internal', False):
+                s, t = e.source, e.target
+                sx, sy = self._boundary_point(s, t.cx, t.cy)
+                tx, ty = self._boundary_point(t, s.cx, s.cy)
+                e.route((sx, sy), (tx, ty))
 
     def _is_visual_containment(self, edge):
         """Check if edge is a containment edge that's visually redundant.
@@ -1246,9 +1438,13 @@ class Diagram:
 
     def _assign_layers(self):
         child_nodes = self._child_nodes()
-        eligible = [n for n in self.nodes if n not in child_nodes] + self.activities
+        eligible = ([n for n in self.nodes if n not in child_nodes]
+                    + [a for a in self.activities
+                       if not getattr(a, 'parent', None)])
         incoming = {n: set() for n in eligible}
         for e in self.edges:
+            if getattr(e, '_nested_internal', False):
+                continue  # internal to a composite — not a layer constraint
             if isinstance(e.source, (Comment, View)) or isinstance(e.target, (Comment, View)):
                 continue
             if e.source in child_nodes or e.target in child_nodes:
@@ -1585,7 +1781,8 @@ class Diagram:
     # ── Sugiyama routing ──
 
     def _route_sugiyama(self, node_gap, margin):
-        edge_list = [(e.source.name, e.target.name) for e in self.edges]
+        edge_list = [(e.source.name, e.target.name) for e in self.edges
+                     if not getattr(e, '_nested_internal', False)]
         node_sizes = {n.name: (n.w, n.h) for n in self.nodes}
         # Use layer_gap from our own layout attrs or default
         layer_spacing = getattr(self, '_layer_gap', 50)
@@ -1619,6 +1816,8 @@ class Diagram:
             if e.source_port and e.target_port:
                 self._port_route(e)
                 continue
+            if getattr(e, '_nested_internal', False):
+                continue  # already routed (inside its composite)
             key = (e.source.name, e.target.name)
             if key in route_map:
                 e.waypoints = route_map[key]
@@ -1649,20 +1848,41 @@ class Diagram:
         """
         self._layer_gap = layer_gap
 
+        # Composite-node nesting (v0.4.0): inflate sizes and re-anchor
+        # edges to composite boundaries before any engine runs.
+        self._size_nested_tree()
+        self._reanchor_nested_edges()
+
         if routing == 'sugiyama':
             self._route_sugiyama(node_gap, margin)
+            self._place_nested_tree()
+            self._refresh_internal_edges()
             self._update_port_positions()
             return
 
         if routing == 'elk':
             from diagramboxes.elk import layout_with_elk
+            # Composite internal edges are pre-routed; hide them from the
+            # engine (they'd become self-edges on the composite node).
+            internal = [e for e in self.edges
+                        if getattr(e, '_nested_internal', False)]
+            self.edges = [e for e in self.edges if e not in internal]
             layout_with_elk(self)
+            self.edges.extend(internal)
+            self._place_nested_tree()
+            self._refresh_internal_edges()
             self._update_port_positions()
             return
 
         if routing == 'pyelk':
             from diagramboxes.pyelk_layout import layout_with_pyelk
+            internal = [e for e in self.edges
+                        if getattr(e, '_nested_internal', False)]
+            self.edges = [e for e in self.edges if e not in internal]
             layout_with_pyelk(self)
+            self.edges.extend(internal)
+            self._place_nested_tree()
+            self._refresh_internal_edges()
             self._update_port_positions()
             return
 
@@ -1703,10 +1923,17 @@ class Diagram:
                     child.y = cy
                     cy += child.h + 4
 
+        # Position children inside composite nodes (v0.4.0), then refresh
+        # internal-edge waypoints (children are now positioned).
+        self._place_nested_tree()
+        self._refresh_internal_edges()
+
         gap_used = {}
         for e in self.edges:
             if self._is_visual_containment(e):
                 continue
+            if getattr(e, '_nested_internal', False):
+                continue  # routed already (inside its composite)
             if isinstance(e.source, (Comment, View)) or isinstance(e.target, (Comment, View)):
                 self._route_special_edge(e, orthogonal=(routing == 'orthogonal'))
             elif routing == 'orthogonal':
@@ -1738,6 +1965,8 @@ class Diagram:
                         all_path_px.add((x, y1))
         for e in self.edges:
             if self._is_visual_containment(e):
+                continue
+            if getattr(e, '_nested_internal', False):
                 continue
             own = set(e.waypoints)
             for i in range(len(e.waypoints) - 1):
@@ -1771,15 +2000,40 @@ class Diagram:
                               source_node=e.source,
                               target_node=e.target)
         child_nodes = self._child_nodes()
-        for n in self.nodes:
-            if n in child_nodes:
-                continue
-            draw_class_box(c, n.x, n.y, n.x + n.w, n.y + n.h, n.name, n.stereotypes, n.attributes, rounded=n.rounded, dashed=n.dashed)
-            for p in n.ports:
+
+        def _draw_node_tree(node):
+            draw_class_box(c, node.x, node.y, node.x + node.w, node.y + node.h,
+                           node.name, node.stereotypes, node.attributes,
+                           rounded=node.rounded, dashed=node.dashed)
+            for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                 else:
                     draw_port_box(c, p.x, p.y, p.label, side=p.side, direction=p.direction)
+            for ch in node.children:
+                _draw_node_tree(ch)
+            for a in self.activities:
+                if getattr(a, 'parent', None) is node:
+                    _draw_activity(a)
+
+        def _draw_activity(a):
+            if isinstance(a, StartNode):
+                draw_start_node(c, a.cx, a.cy, a.r)
+            elif isinstance(a, DoneNode):
+                draw_done_node(c, a.cx, a.cy, a.r)
+            elif isinstance(a, TerminateNode):
+                draw_terminate_node(c, a.cx, a.cy, a.r)
+            elif isinstance(a, ForkJoinNode):
+                draw_fork_join_node(c, a.x, a.y, a.x + a.w, a.y + a.h)
+            elif isinstance(a, DecisionNode):
+                draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
+            elif isinstance(a, HistoryPseudostate):
+                draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+
+        for n in self.nodes:
+            if n in child_nodes:
+                continue
+            _draw_node_tree(n)
         for com in self.comments:
             draw_comment_box(c, com.x, com.y, com.x + com.w, com.y + com.h, com.text)
         for v in self.views:
@@ -1793,6 +2047,8 @@ class Diagram:
                     else:
                         draw_port_box(c, p.x, p.y, p.label, side=p.side, direction=p.direction)
         for a in self.activities:
+            if getattr(a, 'parent', None) is not None:
+                continue  # drawn inside its composite node
             if isinstance(a, StartNode):
                 draw_start_node(c, a.cx, a.cy, a.r)
             elif isinstance(a, DoneNode):
@@ -1805,6 +2061,18 @@ class Diagram:
                 draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+        # Composite-internal edges (v0.4.0) — after boxes, so they land in
+        # the open interior between sibling child boxes.
+        for e in self.edges:
+            if getattr(e, '_nested_internal', False):
+                draw_polyline(c, e.waypoints,
+                              line_style=e.line_style,
+                              source=e.source_style,
+                              target=e.target_style,
+                              label=e.label,
+                              used_labels=used_labels,
+                              source_node=e.source,
+                              target_node=e.target)
         return c.frame()
 
     def render_svg(self, routing='orthogonal', layer_gap=50, node_gap=12, margin=8, scale=1.5):
@@ -1877,15 +2145,38 @@ class Diagram:
                         own.add((x, y1))
             keep_away = all_path_px - own
         child_nodes = self._child_nodes()
-        for n in self.nodes:
-            if n in child_nodes:
-                continue
-            svg_draw_node(c, n)
-            for p in n.ports:
+
+        def _svg_node_tree(node):
+            svg_draw_node(c, node)
+            for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     svg_draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                 else:
                     svg_draw_port(c, p)
+            for ch in node.children:
+                _svg_node_tree(ch)
+            for a in self.activities:
+                if getattr(a, 'parent', None) is node:
+                    _svg_activity(a)
+
+        def _svg_activity(a):
+            if isinstance(a, StartNode):
+                svg_draw_start_node(c, a.cx, a.cy, a.r)
+            elif isinstance(a, DoneNode):
+                svg_draw_done_node(c, a.cx, a.cy, a.r)
+            elif isinstance(a, TerminateNode):
+                svg_draw_terminate_node(c, a.cx, a.cy, a.r)
+            elif isinstance(a, ForkJoinNode):
+                svg_draw_fork_join_node(c, a.x, a.y, a.x + a.w, a.y + a.h)
+            elif isinstance(a, DecisionNode):
+                svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
+            elif isinstance(a, HistoryPseudostate):
+                svg_draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+
+        for n in self.nodes:
+            if n in child_nodes:
+                continue
+            _svg_node_tree(n)
         for com in self.comments:
             svg_draw_comment(c, com)
         for v in self.views:
@@ -1902,6 +2193,8 @@ class Diagram:
                 continue
             svg_draw_edge(c, e, keep_away=all_path_px - set(e.waypoints))
         for a in self.activities:
+            if getattr(a, 'parent', None) is not None:
+                continue  # drawn inside its composite node
             if isinstance(a, StartNode):
                 svg_draw_start_node(c, a.cx, a.cy, a.r)
             elif isinstance(a, DoneNode):
