@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Stress test: multiple ports per side with auto-distribution."""
+"""Stress test: multiple ports per side with auto-distribution.
+
+Pure interconnection-style port flow — every edge is a connector between
+an explicit ``source_port`` and ``target_port`` (open arrow at target).
+No structural relationships are mixed in; composition / aggregation is
+exercised in ``test_composition.py`` instead.
+"""
 
 from boxes import Diagram, OPEN, TRIANGLE, FILLED, DIAMOND, DASHED
 
@@ -50,9 +56,9 @@ d.add_edge(left_c, hub, source_port=lc_in, target_port=hub_l3,
            target_style=OPEN, label='conn3')
 
 d.add_edge(hub, right_a, source_port=hub_r1, target_port=ra_out,
-           source_style=FILLED, target_style=OPEN, label='out1')
+           target_style=OPEN, label='out1')
 d.add_edge(hub, right_b, source_port=hub_r2, target_port=rb_out,
-           source_style=FILLED, target_style=OPEN, label='out2')
+           target_style=OPEN, label='out2')
 
 d.add_edge(top_a, hub, source_port=ta_out, target_port=hub_t1,
            target_style=OPEN, label='top1')
@@ -60,9 +66,9 @@ d.add_edge(top_b, hub, source_port=tb_out, target_port=hub_t2,
            target_style=OPEN, label='top2')
 
 d.add_edge(hub, bot_a, source_port=hub_b1, target_port=ba_out,
-           source_style=FILLED, target_style=OPEN, label='bot1')
+           target_style=OPEN, label='bot1')
 d.add_edge(hub, bot_b, source_port=hub_b2, target_port=bb_out,
-           source_style=FILLED, target_style=OPEN, label='bot2')
+           target_style=OPEN, label='bot2')
 
 # Also add a port-to-port edge between two left leaves to test lateral edges
 la_out = left_a.add_port('extra', side='left', direction='out')
@@ -70,4 +76,4 @@ lc_in2 = left_c.add_port('extra', side='right', direction='in')
 d.add_edge(left_a, left_c, source_port=la_out, target_port=lc_in2,
            line_style=DASHED, target_style=OPEN, label='lateral')
 
-print(d.render(routing='orthogonal', node_gap=40))
+print(d.render(routing='pyelk', node_gap=40))

@@ -1596,16 +1596,29 @@ class Diagram:
             layer_spacing=layer_spacing,
         )
 
-        # Update node positions
+        # Update node positions from sugiyama's layer assignment.
         for n in self.nodes:
             if n.name in positions:
                 n.x, n.y, n.w, n.h = positions[n.name]
+
+        # Port outer-faces depend on the node box positions computed above, so
+        # refresh them before any port-to-port routing runs.
+        self._update_port_positions()
 
         # Map routes back to edges (preserving order)
         route_map = {}
         for src, tgt, pts in routes:
             route_map[(src, tgt)] = pts
         for e in self.edges:
+            # Explicit port-to-port edges use the same Z-shaped routing as the
+            # orthogonal engine — this anchors each end at the port's outer
+            # face instead of the bare centre of the node body, so arrowheads
+            # (filled diamonds in particular) sit beside the port box rather
+            # than crashing into a port placed on the side the sugiyama
+            # router drops arrows in from.
+            if e.source_port and e.target_port:
+                self._port_route(e)
+                continue
             key = (e.source.name, e.target.name)
             if key in route_map:
                 e.waypoints = route_map[key]
