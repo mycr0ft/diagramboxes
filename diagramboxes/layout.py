@@ -1347,6 +1347,15 @@ class Diagram:
             lr = sum(1 for p in node.ports
                      if p.side in ('left', 'right'))
             node.h = max(node.h, node.h + lr * (PORT_H + 4) + 10)
+            # Horizontal room: inside labels hug their own border, so
+            # the centered text must clear label widths on both sides.
+            left_max = max((len(p.label or '') for p in node.ports
+                            if p.side == 'left'), default=0)
+            right_max = max((len(p.label or '') for p in node.ports
+                             if p.side == 'right'), default=0)
+            if left_max or right_max:
+                node.w = max(node.w, node.w + 2 * (PORT_W + 2 + left_max)
+                             + 2 * (PORT_W + 2 + right_max) + 8)
         if not items:
             node._rows = []
             node._text_w, node._text_h = node.w, node.h
