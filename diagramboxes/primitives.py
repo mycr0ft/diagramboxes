@@ -485,7 +485,8 @@ def _port_arrow(side, direction):
     return arrows.get(f'{direction}_{side}')
 
 
-def draw_port_box(c, x, y, label=None, side='left', direction=None):
+def draw_port_box(c, x, y, label=None, side='left', direction=None,
+                  label_inside=False):
     """Draw a small port box (8×12 px) with optional direction arrow inside and label outside.
 
     Parameters
@@ -517,9 +518,15 @@ def draw_port_box(c, x, y, label=None, side='left', direction=None):
     if label:
         ly = y + 4
         if side == 'left':
-            c.set_text(x - len(label) * 2 - 2, ly, label)
+            if label_inside:
+                c.set_text(x + PORT_W + 2, ly, label)
+            else:
+                c.set_text(x - len(label) * 2 - 2, ly, label)
         elif side == 'right':
-            c.set_text(x + PORT_W + 2, ly, label)
+            if label_inside:
+                c.set_text(x - len(label) * 2 - 2, ly, label)
+            else:
+                c.set_text(x + PORT_W + 2, ly, label)
         elif side == 'top':
             c.set_text(x + PORT_W // 2 - len(label), y - 4, label)
         elif side == 'bottom':

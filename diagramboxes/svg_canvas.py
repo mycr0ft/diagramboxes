@@ -636,7 +636,11 @@ def svg_draw_port(c, p):
     if arrow:
         c.add_text(p.x + p.w // 2, p.y + p.h // 2 + 2, arrow, anchor='middle')
     if p.label:
-        if p.side == 'left':
+        if p.side == 'left' and getattr(p, 'label_inside', False):
+            c.add_text(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
+        elif p.side == 'right' and getattr(p, 'label_inside', False):
+            c.add_text(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
+        elif p.side == 'left':
             c.add_text(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
         elif p.side == 'right':
             c.add_text(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')

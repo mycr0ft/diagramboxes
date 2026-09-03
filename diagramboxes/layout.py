@@ -70,11 +70,13 @@ class Port:
     Edge : source_port / target_port parameters use Port objects.
     """
 
-    def __init__(self, label, side='left', offset=0.5, direction=None):
+    def __init__(self, label, side='left', offset=0.5, direction=None,
+                 label_inside=False):
         self.label = label
         self.side = side
         self.offset = offset
         self.direction = direction
+        self.label_inside = label_inside  # draw label inside the node (v0.4.0)
         self.parent = None
         self.x = self.y = 0
 
@@ -167,8 +169,9 @@ class Node:
             total_lines += 1 + len(self.attributes)
         self.h = total_lines * 5 + 8
 
-    def add_port(self, label, side='left', offset=None, direction=None):
-        p = Port(label, side, offset, direction)
+    def add_port(self, label, side='left', offset=None, direction=None,
+                 label_inside=False):
+        p = Port(label, side, offset, direction, label_inside=label_inside)
         p.parent = self
         self.ports.append(p)
         return p
@@ -973,14 +976,23 @@ class Diagram:
 
     # ── state-machine pseudostates ──
 
-    def add_initial(self, name='initial'):
+    def add_initial(self, name='initial', parent=None):
         """Add a state-machine initial pseudostate (filled black circle).
+
+        Parameters
+        ----------
+        name : str
+            Optional label.
+        parent : Node, optional
+            Composite node to nest the pseudostate inside (v0.4.0).
 
         Returns
         -------
         InitialPseudostate
         """
         n = InitialPseudostate(name=name)
+        if parent is not None:
+            n.parent = parent
         self.activities.append(n)
         return n
 
@@ -1329,6 +1341,12 @@ class Diagram:
         # Normalize to the pure text size first — makes repeated sizing
         # idempotent (the previous inflation is discarded each pass).
         node._calc_size()
+        # Opt-in: nodes with inside-labeled boundary ports get vertical
+        # room so the port marker and its label clear the text rows.
+        if any(getattr(p, 'label_inside', False) for p in node.ports):
+            lr = sum(1 for p in node.ports
+                     if p.side in ('left', 'right'))
+            node.h = max(node.h, node.h + lr * (PORT_H + 4) + 10)
         if not items:
             node._rows = []
             node._text_w, node._text_h = node.w, node.h
@@ -2009,7 +2027,9 @@ class Diagram:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                 else:
-                    draw_port_box(c, p.x, p.y, p.label, side=p.side, direction=p.direction)
+                    draw_port_box(c, p.x, p.y, p.label, side=p.side,
+                                  direction=p.direction,
+                                  label_inside=getattr(p, 'label_inside', False))
             for ch in node.children:
                 _draw_node_tree(ch)
             for a in self.activities:
@@ -2045,7 +2065,9 @@ class Diagram:
                     if isinstance(p, (EntryPoint, ExitPoint)):
                         draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                     else:
-                        draw_port_box(c, p.x, p.y, p.label, side=p.side, direction=p.direction)
+                        draw_port_box(c, p.x, p.y, p.label, side=p.side,
+                                  direction=p.direction,
+                                  label_inside=getattr(p, 'label_inside', False))
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node
