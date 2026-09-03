@@ -265,6 +265,22 @@ with open('/tmp/diagram.svg', 'w') as f:
 
 ## Routing Engines
 
+Composite (nested) nodes — v0.4.0:
+
+```python
+from diagramboxes import Diagram, FILLED
+
+d = Diagram()
+vehicle = d.add_node('Vehicle', ['part def'], rounded=True)
+engine = d.add_node('Engine', ['part'], parent=vehicle)  # drawn inside
+d.add_edge(engine, gearbox, target_style=FILLED)         # internal edge
+```
+
+Children are packed in rows under the title/attribute area; internal
+(same-parent) edges route inside the composite; cross-boundary edges
+re-anchor to the outermost ancestor. Pseudostates nest too:
+`d.add_final_state(parent=composite)`.
+
 diagramboxes provides five routing engines, selectable via the `routing` parameter:
 
 ```python
