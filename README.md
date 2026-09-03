@@ -276,6 +276,10 @@ engine = d.add_node('Engine', ['part'], parent=vehicle)  # drawn inside
 d.add_edge(engine, gearbox, target_style=FILLED)         # internal edge
 ```
 
+Ports with inside labels (`add_port(..., label_inside=True)`) get
+their own vertical band — the marker and label sit clear of the box
+text (used by structured interconnection views).
+
 Children are packed in rows under the title/attribute area; internal
 (same-parent) edges route inside the composite; cross-boundary edges
 re-anchor to the outermost ancestor. Pseudostates nest too:
