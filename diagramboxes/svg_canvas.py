@@ -38,7 +38,7 @@ layout.py      : Diagram.render_svg() calls these functions
 from math import atan2, cos, sin, pi
 from xml.sax.saxutils import escape
 
-from boxes.primitives import SOLID, DASHED, NONE, OPEN, TRIANGLE, DIAMOND, FILLED, \
+from diagramboxes.primitives import SOLID, DASHED, NONE, OPEN, TRIANGLE, DIAMOND, FILLED, \
     DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION, CIRCLE, UNOWNED, ARROW_SIZE, COMMENT_FOLD, \
     ROUNDED_RADIUS, _port_arrow, _arrow_backoff, _node_outward_angle
 

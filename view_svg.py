@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
 
 def build_demo():
     d = Diagram()

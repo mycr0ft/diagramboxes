@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Individual SVG files for each convenience method and arrowhead style."""
 
-from boxes import Diagram, DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION
+from diagramboxes import Diagram, DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION
 
 def build(label, setup):
     d = Diagram()

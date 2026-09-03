@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SVG version of view / package demo — nesting children inside view."""
 
-from boxes import Diagram, FILLED
+from diagramboxes import Diagram, FILLED
 
 d = Diagram()
 

@@ -474,7 +474,7 @@ def apply_elk_result(diagram, result, id_map=None):
             target_ends.setdefault(tgt_key, []).append(e)
 
     # Diamond width is ARROW_SIZE * 0.7; use 2x that for separation
-    from boxes.primitives import ARROW_SIZE
+    from diagramboxes.primitives import ARROW_SIZE
     diamond_width = ARROW_SIZE * 0.7
     offset = diamond_width * 2
     for (node_id, pt), edges in source_starts.items():

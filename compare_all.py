@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compare all 4 routing modes side-by-side."""
 
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
-from boxes.elk import layout_with_elk
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
+from diagramboxes.elk import layout_with_elk
 from drawille import Canvas
 
 
@@ -53,10 +53,10 @@ for mode in ['straight', 'orthogonal', 'sugiyama', 'elk']:
                 if not e.waypoints:
                     c.set_text(10, 10, 'ELKJS FAILED')
             for n in d.nodes:
-                from boxes.primitives import draw_class_box
+                from diagramboxes.primitives import draw_class_box
                 draw_class_box(c, n.x, n.y, n.x + n.w, n.y + n.h, n.name, n.stereotypes)
             for e in d.edges:
-                from boxes.primitives import draw_polyline
+                from diagramboxes.primitives import draw_polyline
                 if e.waypoints:
                     draw_polyline(c, e.waypoints, line_style=e.line_style,
                                   source=e.source_style, target=e.target_style, label=e.label)

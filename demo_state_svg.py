@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Demo: render the same state machine as demo_state.py, but as SVG."""
-from boxes import Diagram, NONE, OPEN
+from diagramboxes import Diagram, NONE, OPEN
 
 
 d = Diagram()

@@ -27,19 +27,19 @@ svg_canvas.py    : SVG vector drawing
 """
 
 from drawille import Canvas
-from boxes.primitives import draw_polyline, draw_relation, draw_class_box, draw_port_box, \
+from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box, draw_port_box, \
     draw_comment_box, draw_view_box, draw_start_node, draw_done_node, draw_terminate_node, \
     draw_fork_join_node, draw_decision_node, \
     draw_history_node, draw_entry_exit_point, \
     SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, PORT_W, PORT_H
-from boxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_draw_comment, svg_draw_view, \
+from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
     svg_draw_history_node, svg_draw_entry_exit_point
 
 _MIN_PORT_SPACING = 8
 from collections import defaultdict
-from boxes.sugiyama import sugiyama_layout
+from diagramboxes.sugiyama import sugiyama_layout
 
 
 class Port:
@@ -192,7 +192,7 @@ class Comment:
     """A comment/documentation node with a folded (dog-ear) corner.
 
     Comments are drawn as rectangles with the top-right corner folded
-    over (dog-ear), distinguishing them from regular classifier boxes.
+    over (dog-ear), distinguishing them from regular classifier diagramboxes.
 
     Parameters
     ----------
@@ -465,8 +465,8 @@ class HistoryPseudostate:
 
     Resumes the most-recent active substate of the owning composite state
     (shallow) or the most-recent active recursive substate configuration
-    (deep).  Drawn via :func:`boxes.primitives.draw_history_node` /
-    :func:`boxes.svg_canvas.svg_draw_history_node`.
+    (deep).  Drawn via :func:`diagramboxes.primitives.draw_history_node` /
+    :func:`diagramboxes.svg_canvas.svg_draw_history_node`.
 
     Parameters
     ----------
@@ -652,7 +652,7 @@ class View:
         """Add a node as a child rendered inside this view/package.
 
         Child nodes are positioned inside the content area of the view
-        during layout and are not drawn as top-level boxes.
+        during layout and are not drawn as top-level diagramboxes.
         """
         self.children.append(node)
         self._calc_size()
@@ -1655,13 +1655,13 @@ class Diagram:
             return
 
         if routing == 'elk':
-            from boxes.elk import layout_with_elk
+            from diagramboxes.elk import layout_with_elk
             layout_with_elk(self)
             self._update_port_positions()
             return
 
         if routing == 'pyelk':
-            from boxes.pyelk_layout import layout_with_pyelk
+            from diagramboxes.pyelk_layout import layout_with_pyelk
             layout_with_pyelk(self)
             self._update_port_positions()
             return

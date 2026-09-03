@@ -1,6 +1,6 @@
-# boxes — UML/SysML block diagrams in your terminal (and SVG)
+# diagramboxes — UML/SysML block diagrams in your terminal (and SVG)
 
-**boxes** is a pure-Python library for rendering UML/SysML-like block diagrams
+**diagramboxes** is a pure-Python library for rendering UML/SysML-like block diagrams
 using Unicode braille characters (via [drawille](https://github.com/asciimoo/drawille))
 or as SVG. It supports four routing engines, ports as small boundary boxes, node
 attributes, multiple arrowhead styles, and label collision avoidance.
@@ -58,7 +58,7 @@ poetry run python demo.py
 poetry run python stress_test.py
 ```
 
-**Note:** `boxes` is installed in editable mode, so any changes to the source
+**Note:** `diagramboxes` is installed in editable mode, so any changes to the source
 are picked up automatically.
 
 ### Optional: ELKjs integration
@@ -76,7 +76,7 @@ Then use `routing='elk'` (see §Routing Engines below).
 ### 1. Your first diagram
 
 ```python
-from boxes import Diagram, OPEN, FILLED
+from diagramboxes import Diagram, OPEN, FILLED
 
 d = Diagram()
 vehicle = d.add_node('Vehicle', ['block'])
@@ -100,7 +100,7 @@ A `Node` has a **name**, optional **stereotypes** (shown as «stereotype» above
 name), and optional **attributes** (shown below a separator line).
 
 ```python
-from boxes import Diagram
+from diagramboxes import Diagram
 
 d = Diagram()
 
@@ -117,7 +117,7 @@ An `Edge` connects two nodes, with optional arrowheads at each end and an
 optional label.
 
 ```python
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
 
 d.add_edge(source, target)                                # default: open arrow at target
 d.add_edge(source, target, source_style=FILLED,            # filled diamond at source
@@ -221,7 +221,7 @@ Open the result in any browser or vector-editing tool. The `scale` parameter
 ### 6. Full workflow example
 
 ```python
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
 
 d = Diagram()
 
@@ -265,7 +265,7 @@ with open('/tmp/diagram.svg', 'w') as f:
 
 ## Routing Engines
 
-boxes provides five routing engines, selectable via the `routing` parameter:
+diagramboxes provides five routing engines, selectable via the `routing` parameter:
 
 ```python
 d.render(routing='orthogonal')    # or 'straight', 'sugiyama', 'elk', 'pyelk'
@@ -368,7 +368,7 @@ Bridges to the Eclipse Layout Kernel via [pyelk](https://github.com/depetrol/pye
 a young but interesting pure-Python port of elkjs.  Where the `elk` engine
 shells out to Node.js, `pyelk` runs the layout in-process — **no Node.js,
 no JVM, no subprocess** — which makes it a natural fit for a pythonic project
-like boxes.  Because pyelk speaks the same ELK JSON format as elkjs, this
+like diagramboxes.  Because pyelk speaks the same ELK JSON format as elkjs, this
 engine reuses the exact same `to_elk_json()` / `apply_elk_result()` pipeline
 as `elk`; only the layout backend is swapped.
 
@@ -473,7 +473,7 @@ Arrowheads are computed as `(<polygon> ...)` vectors via `_arrow_polygon()`
 ### Package exports (`__init__.py`)
 
 ```python
-from boxes import (
+from diagramboxes import (
     # Arrowhead styles
     NONE, OPEN, TRIANGLE, DIAMOND, FILLED, DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION,
     # Line styles

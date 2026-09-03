@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stress test: system architecture with ports, attributes, and mixed routing."""
 
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DIAMOND, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DIAMOND, DASHED
 
 d = Diagram()
 

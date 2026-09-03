@@ -11,7 +11,7 @@ Shows:
   - Owned membership (crossed circle) from VWDynamics to SensorCluster
 """
 
-from boxes import Diagram, FILLED
+from diagramboxes import Diagram, FILLED
 
 d = Diagram()
 

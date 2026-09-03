@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Demo of all convenience methods and arrowhead styles."""
 
-from boxes import Diagram, DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION
+from diagramboxes import Diagram, DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION
 
 def show(title, f):
     d = Diagram()

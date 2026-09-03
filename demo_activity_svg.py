@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SVG version of activity diagram control nodes demo."""
 
-from boxes import Diagram, OPEN
+from diagramboxes import Diagram, OPEN
 
 d = Diagram()
 

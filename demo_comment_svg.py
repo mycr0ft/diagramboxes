@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SVG version of comment/dog-ear demo."""
 
-from boxes import Diagram, FILLED, DASHED
+from diagramboxes import Diagram, FILLED, DASHED
 
 d = Diagram()
 

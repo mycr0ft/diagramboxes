@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SysML block diagram demo — orthogonal routing with ports and attributes."""
 
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
 
 d = Diagram()
 

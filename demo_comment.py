@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Demo of comment/documentation nodes with dog-ear fold."""
 
-from boxes import Diagram, FILLED, DASHED
+from diagramboxes import Diagram, FILLED, DASHED
 
 d = Diagram()
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate SVG output from a diagram and save to file."""
 
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
 
 d = Diagram()
 

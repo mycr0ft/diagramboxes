@@ -5,7 +5,7 @@ Run with:
     poetry run python demo_state.py            # braille terminal output
     poetry run python demo_state_svg.py        # SVG output to /tmp/diagram_state.svg
 """
-from boxes import Diagram, NONE, OPEN
+from diagramboxes import Diagram, NONE, OPEN
 
 
 d = Diagram()

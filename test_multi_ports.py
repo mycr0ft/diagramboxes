@@ -7,7 +7,7 @@ No structural relationships are mixed in; composition / aggregation is
 exercised in ``test_composition.py`` instead.
 """
 
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DIAMOND, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DIAMOND, DASHED
 
 d = Diagram()
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test ports as boxes and attributes — with wider spacing."""
 
-from boxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
+from diagramboxes import Diagram, OPEN, TRIANGLE, FILLED, DASHED
 
 d = Diagram()
 

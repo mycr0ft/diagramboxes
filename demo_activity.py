@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Demo of activity diagram control nodes — start, done, terminate, fork, join, decision, merge."""
 
-from boxes import Diagram, OPEN
+from diagramboxes import Diagram, OPEN
 
 d = Diagram()
 

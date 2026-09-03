@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from boxes import (
+from diagramboxes import (
     Diagram, Node, Edge, Port,
     StartNode, DoneNode, TerminateNode, ForkJoinNode, DecisionNode,
     # state-machine aliases
@@ -13,8 +13,8 @@ from boxes import (
     HistoryPseudostate, EntryPoint, ExitPoint, StateNode,
     OPEN, NONE,
 )
-from boxes.primitives import draw_history_node, draw_entry_exit_point
-from boxes.svg_canvas import svg_draw_history_node, svg_draw_entry_exit_point
+from diagramboxes.primitives import draw_history_node, draw_entry_exit_point
+from diagramboxes.svg_canvas import svg_draw_history_node, svg_draw_entry_exit_point
 
 
 # ── class hierarchy ──
@@ -243,7 +243,7 @@ def test_draw_entry_exit_point_smoke():
 
 
 def test_svg_draw_history_node_smoke():
-    from boxes.svg_canvas import SvgCanvas
+    from diagramboxes.svg_canvas import SvgCanvas
     c = SvgCanvas()
     svg_draw_history_node(c, 30, 30, 6, deep=True)
     out = c.output(width=80, height=80)
@@ -252,7 +252,7 @@ def test_svg_draw_history_node_smoke():
 
 
 def test_svg_draw_entry_exit_point_smoke():
-    from boxes.svg_canvas import SvgCanvas
+    from diagramboxes.svg_canvas import SvgCanvas
     c = SvgCanvas()
     svg_draw_entry_exit_point(c, 30, 30, 6, label='in', kind='entry')
     out = c.output(width=80, height=80)

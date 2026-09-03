@@ -6,7 +6,7 @@ and empty-diamond (aggregation) arrowheads without the notational
 mixing that an interconnection-style port diagram would never use.
 """
 
-from boxes import Diagram, FILLED, DIAMOND
+from diagramboxes import Diagram, FILLED, DIAMOND
 
 d = Diagram()
 
