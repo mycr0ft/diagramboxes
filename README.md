@@ -355,7 +355,10 @@ Full 5-stage Sugiyama framework:
 - Correctly handles non-adjacent edges (unlike the homegrown `orthogonal`
   which uses BFS-shortest-path layering)
 - Crossing minimization can get stuck in local minima
-- Does not support ports (they are ignored in Sugiyama mode)
+- Ports: the layered positioning itself does not model port sides,
+  but port edges are routed **obstacle-aware** after positioning
+  (wrap-around bypasses; single-ported edges anchor at the port
+  boundary) — see `Port-aware routing` above
 
 Best for: directed graphs, flow charts, diagrams with non-adjacent
 edges.
@@ -622,7 +625,10 @@ from diagramboxes import (
   lines break the line visually. The SVG renderer does not have this issue.
 - **Sugiyama crossing minimization** can get stuck in local minima on
   complex graphs.
-- **Ports are not supported in Sugiyama mode** (ports are ignored).
+- **Sugiyama layering does not model port sides:** port edges are
+  routed obstacle-aware after positioning (wrap-around bypasses,
+  port-boundary anchoring) but the layering heuristic itself does not
+  know about them.
 - **ELKjs subprocess overhead** (~500 ms per layout). Not suitable for
   interactive use.
 - **ELKjs produces wider diagrams** with different spacing than our Python
