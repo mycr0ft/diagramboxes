@@ -27,7 +27,11 @@ Entry point
 
 Limitations
 -----------
-- Does **not** support ports (unlike the homegrown orthogonal router).
+- Port anchoring is delegated to ``layout._port_route`` / ``_route_single_port``
+  after node positioning: the layered positioning itself does not model
+  ports, but port-to-port edges are routed obstacle-aware (wrap-around
+  bypasses through free bands), so they no longer slice through node
+  bodies placed by the layering.
 - Crossing minimization uses simple barycenter and may need more
   sophisticated heuristics for large graphs.
 

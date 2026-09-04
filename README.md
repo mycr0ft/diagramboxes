@@ -280,10 +280,27 @@ Ports with inside labels (`add_port(..., label_inside=True)`) get
 their own vertical band — the marker and label sit clear of the box
 text (used by structured interconnection views).
 
+### Port-aware routing (v0.5.0)
+
+The sugiyama layering positions nodes without regard for the sides
+their ports face; port-to-port edges are therefore routed
+**obstacle-aware**: candidate paths are validated against every
+foreign node body and port box, and side-facing ports get
+wrap-around bypasses through free bands (leave the source port, run
+through the gap between node rows, descend outside the target box,
+approach the port from its own side). Edges with a single ported end
+are anchored at the port boundary instead of the node centre. The
+plain Z-shape is kept unchanged whenever it is already clear.
+
+Decision / merge diamonds and fork/join bars now accept
+`parent=` (nest inside composites), matching `add_start` /
+`add_done`:
+
 Children are packed in rows under the title/attribute area; internal
 (same-parent) edges route inside the composite; cross-boundary edges
 re-anchor to the outermost ancestor. Pseudostates nest too:
-`d.add_final_state(parent=composite)`.
+`d.add_final_state(parent=composite)`. Decision diamonds nest:
+`d.add_decision('guard?', parent=composite)`.
 
 diagramboxes provides five routing engines, selectable via the `routing` parameter:
 

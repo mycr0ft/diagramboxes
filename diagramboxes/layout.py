@@ -898,7 +898,7 @@ class Diagram:
         self.activities.append(n)
         return n
 
-    def add_fork(self, name='', w=36, h=8):
+    def add_fork(self, name='', w=36, h=8, parent=None):
         """Add an activity fork node (synchronization bar).
 
         Parameters
@@ -907,16 +907,20 @@ class Diagram:
             Optional label.
         w, h : int
             Bar dimensions.
+        parent : Node, optional
+            Composite-structure parent (v0.4.0 nesting).
 
         Returns
         -------
         ForkJoinNode
         """
         n = ForkJoinNode(name, w, h)
+        if parent is not None:
+            n.parent = parent
         self.activities.append(n)
         return n
 
-    def add_join(self, name='', w=36, h=8):
+    def add_join(self, name='', w=36, h=8, parent=None):
         """Add an activity join node (synchronization bar).
 
         Same visual as fork — a thick bar.
@@ -927,16 +931,20 @@ class Diagram:
             Optional label.
         w, h : int
             Bar dimensions.
+        parent : Node, optional
+            Composite-structure parent (v0.4.0 nesting).
 
         Returns
         -------
         ForkJoinNode
         """
         n = ForkJoinNode(name, w, h)
+        if parent is not None:
+            n.parent = parent
         self.activities.append(n)
         return n
 
-    def add_decision(self, name='', size=28):
+    def add_decision(self, name='', size=28, parent=None):
         """Add an activity decision node (diamond).
 
         Parameters
@@ -945,16 +953,20 @@ class Diagram:
             Optional label shown inside the diamond.
         size : int
             Width/height of the diamond bounding box.
+        parent : Node, optional
+            Composite node to nest the diamond inside (v0.4.0 nesting).
 
         Returns
         -------
         DecisionNode
         """
         n = DecisionNode(name, size)
+        if parent is not None:
+            n.parent = parent
         self.activities.append(n)
         return n
 
-    def add_merge(self, name='', size=28):
+    def add_merge(self, name='', size=28, parent=None):
         """Add an activity merge node (diamond).
 
         Same visual as decision — a diamond shape.
@@ -965,12 +977,16 @@ class Diagram:
             Optional label shown inside the diamond.
         size : int
             Width/height of the diamond bounding box.
+        parent : Node, optional
+            Composite-structure parent (v0.4.0 nesting).
 
         Returns
         -------
         DecisionNode
         """
         n = DecisionNode(name, size)
+        if parent is not None:
+            n.parent = parent
         self.activities.append(n)
         return n
 
@@ -1631,7 +1647,97 @@ class Diagram:
         else:  # bottom
             return (p.cx, p.y + PORT_H)
 
+    def _route_clear(self, pts, e):
+        """True if every axis-aligned segment of ``pts`` avoids foreign boxes.
+
+        Obstacles are node bodies and port boxes of nodes other than the
+        edge endpoints.  The first segment may graze the source node and
+        the last the target node (each departs from / lands on its own
+        port face); all other segments must clear both endpoints too.
+        """
+        foreign = [n for n in self.nodes if n not in (e.source, e.target)]
+        foreign_ports = [(p, p.box()) for n in foreign for p in n.ports]
+
+        def _hits(seg, box, pad=1):
+            (x1, y1), (x2, y2) = seg
+            bx1, by1, bx2, by2 = box
+            if x1 == x2:
+                if not (bx1 - pad <= x1 <= bx2 + pad):
+                    return False
+                lo, hi = (y1, y2) if y1 < y2 else (y2, y1)
+                return lo <= by2 + pad and hi >= by1 - pad
+            if y1 == y2:
+                if not (by1 - pad <= y1 <= by2 + pad):
+                    return False
+                lo, hi = (x1, x2) if x1 < x2 else (x2, x1)
+                return lo <= bx2 + pad and hi >= bx1 - pad
+            return False  # only axis-aligned segments supported
+
+        nseg = len(pts) - 1
+        for i in range(nseg):
+            seg = (pts[i], pts[i + 1])
+            skip = set()
+            if i == 0:
+                skip.add(id(e.source))
+            if i == nseg - 1:
+                skip.add(id(e.target))
+            for n in foreign:
+                if id(n) in skip:
+                    continue
+                if _hits(seg, n.box()):
+                    return False
+            for _p, pbox in foreign_ports:
+                if _hits(seg, pbox):
+                    return False
+        return True
+
+    def _bypass_candidates(self, sx, sy, ax, ay, e):
+        """Y-sequence candidates for a wrap-around bypass leg.
+
+        The bypass horizontal must clear the target node's y-range, so
+        candidates come from the band between the two nodes' boxes and
+        from just beyond the target box on either side.
+        """
+        src_bottom = e.source.y + e.source.h
+        tgt_top = e.target.y
+        tgt_bottom = e.target.y + e.target.h
+        cands = []
+
+        # Band between the two boxes (when they don't overlap vertically)
+        lo, hi = min(src_bottom, tgt_top), max(src_bottom, tgt_top)
+        if hi - lo > 12:
+            step = max(8, (hi - lo) // 8)
+            cands.extend(range(lo + 6, hi - 6, step))
+
+        # Just beyond the target box (above and below)
+        for base in (tgt_top - 6, tgt_top - 14, tgt_top - 24,
+                     tgt_bottom + 6, tgt_bottom + 14, tgt_bottom + 24):
+            cands.append(base)
+        return [y for y in cands if y > 0]
+
     def _port_route(self, e):
+        """Obstacle-aware port-to-port routing.
+
+        Anchors each end at the port's outer face and keeps the final
+        segment perpendicular to the target port face.  Candidate routes
+        are tried in order and the first that clears all foreign node
+        bodies and port boxes wins:
+
+        1. the direct Z-shape (source leg, horizontal leg, perpendicular
+           approach) — used unchanged whenever it is already clear;
+        2. wrap-around bypasses for side-facing ports: leave the source
+           port, run a horizontal bypass through a free band between or
+           beyond the nodes, and descend (ascend) outside the target box
+           to approach the port from its own side — this is what keeps
+           sugiyama layering from slicing a left/right port edge through
+           intermediate boxes;
+        3. horizontal-leg scans for top/bottom ports (same band logic,
+           shifting the leg y);
+        4. direct L-shaped fallbacks for hook geometries.
+
+        Falls back to the plain Z-shape when nothing clears, preserving
+        the pre-existing behaviour.
+        """
         sp, tp = e.source_port, e.target_port
         if not sp or not tp:
             return False
@@ -1639,43 +1745,116 @@ class Diagram:
         tx, ty = self._port_boundary(tp)
         gap = 4
 
-        # Always make the final segment perpendicular to the target port face.
-        # First determine the approach point (just before the port, on the
-        # side the port faces), then route: source → (vertical leg) →
-        # (horizontal leg) → approach → target in 3 segments.
+        # Perpendicular approach point for the target port face.
         if tp.side == 'left':
-            ax = tx - gap
-            ay = ty
+            ax, ay = tx - gap, ty
         elif tp.side == 'right':
-            ax = tx + gap
-            ay = ty
+            ax, ay = tx + gap, ty
         elif tp.side == 'top':
-            ax = tx
-            ay = ty - gap
+            ax, ay = tx, ty - gap
         else:  # bottom
-            ax = tx
-            ay = ty + gap
+            ax, ay = tx, ty + gap
 
-        # If source and approach are on opposite sides of the port,
-        # a gap would create a hook — route directly instead.
-        if tp.side in ('left', 'right') and (sx - tx) * (ax - tx) < 0:
-            # Direct L-shaped route to port (no gap)
-            if abs(ty - sy) > abs(tx - sx):
-                e.route((sx, sy), (sx, ty), (tx, ty))
+        cands = []
+
+        # 1. Plain Z-shape (historical behaviour) as the first candidate.
+        if tp.side in ('left', 'right'):
+            if (sx - tx) * (ax - tx) < 0:
+                # Hook geometry — source is on the far side of the port:
+                # direct L-shape (validated below, after the wraps).
+                pass
             else:
-                e.route((sx, sy), (tx, sy), (tx, ty))
+                cands.append([(sx, sy), (sx, ay), (ax, ay), (tx, ty)])
+        else:
+            if (sy - ty) * (ay - ty) < 0:
+                pass
+            else:
+                cands.append([(sx, sy), (ax, sy), (ax, ay), (tx, ty)])
+
+        # 2. Wrap-around bypasses for side-facing target ports.
+        if tp.side in ('left', 'right'):
+            for by in self._bypass_candidates(sx, sy, ax, ay, e):
+                if by == ay:
+                    continue
+                # Descend/ascend outside the target box on the port side.
+                cands.append([(sx, sy), (sx, by), (ax, by),
+                              (ax, ay), (tx, ty)])
+
+        # 3. Horizontal-leg scans for top/bottom target ports.
+        else:
+            for my in self._bypass_candidates(sx, sy, ax, ay, e):
+                if my == sy:
+                    continue
+                cands.append([(sx, sy), (ax, my), (ax, ay), (tx, ty)])
+
+        # 4. Direct L-shaped fallbacks (hook geometries).
+        if tp.side in ('left', 'right') and (sx - tx) * (ax - tx) < 0:
+            if abs(ty - sy) > abs(tx - sx):
+                cands.append([(sx, sy), (sx, ty), (tx, ty)])
+            else:
+                cands.append([(sx, sy), (tx, sy), (tx, ty)])
         elif tp.side in ('top', 'bottom') and (sy - ty) * (ay - ty) < 0:
+            if abs(ty - sy) > abs(tx - sx):
+                cands.append([(sx, sy), (sx, ty), (tx, ty)])
+            else:
+                cands.append([(sx, sy), (tx, sy), (tx, ty)])
+
+        for pts in cands:
+            # drop consecutive duplicate points
+            dedup = [pts[0]]
+            for p in pts[1:]:
+                if p != dedup[-1]:
+                    dedup.append(p)
+            if len(dedup) < 2:
+                continue
+            if self._route_clear(dedup, e):
+                e.route(*dedup)
+                return True
+
+        # Fallback: historical Z-shape (unchanged when nothing clears).
+        if tp.side in ('left', 'right'):
             if abs(ty - sy) > abs(tx - sx):
                 e.route((sx, sy), (sx, ty), (tx, ty))
             else:
                 e.route((sx, sy), (tx, sy), (tx, ty))
         else:
-            # 3-segment Z-shape with perpendicular final approach
-            # First leg follows the non-port-face axis
-            if tp.side in ('left', 'right'):
-                e.route((sx, sy), (sx, ay), (ax, ay), (tx, ty))
-            else:
-                e.route((sx, sy), (ax, sy), (ax, ay), (tx, ty))
+            e.route((sx, sy), (ax, sy), (ax, ay), (tx, ty))
+        return True
+
+    def _route_single_port(self, e):
+        """Route an edge with exactly one port-anchored end (sugiyama).
+
+        The ported end anchors at its boundary face; the other end lands
+        on the facing face centre of the plain node.  Candidates scan
+        the band between the nodes, exactly like the two-port router.
+        """
+        if e.source_port and not e.target_port:
+            sx, sy = self._port_boundary(e.source_port)
+            tx, ty = e.target.cx, e.target.y
+            tface = 'top' if ty >= sy else 'bottom'
+            if ty < sy:
+                ty = e.target.y + e.target.h
+        else:
+            tx, ty = self._port_boundary(e.target_port)
+            sx, sy = e.source.cx, e.source.y + e.source.h
+            if e.target.y < e.source.y:
+                sx, sy = e.source.cx, e.source.y
+        mid = (sy + ty) // 2
+        cands = [[(sx, sy), (sx, mid), (tx, mid), (tx, ty)],
+                 [(sx, sy), (sx, ty), (tx, ty)],
+                 [(sx, sy), (tx, sy), (tx, ty)]]
+        for off in (10, 20, -10, -20):
+            cands.append([(sx, sy), (sx, mid + off), (tx, mid + off),
+                          (tx, ty)])
+        for pts in cands:
+            dedup = [pts[0]]
+            for p in pts[1:]:
+                if p != dedup[-1]:
+                    dedup.append(p)
+            if self._route_clear(dedup, e):
+                e.route(*dedup)
+                return True
+        e.waypoints = [(sx, sy), (tx, ty)]
         return True
 
     def _route_orthogonal(self, e, layer_of, layers, gap_used=None):
@@ -1842,6 +2021,9 @@ class Diagram:
             # router drops arrows in from.
             if e.source_port and e.target_port:
                 self._port_route(e)
+                continue
+            if e.source_port or e.target_port:
+                self._route_single_port(e)
                 continue
             if getattr(e, '_nested_internal', False):
                 continue  # already routed (inside its composite)
