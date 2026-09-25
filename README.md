@@ -508,6 +508,36 @@ Arrowheads are computed as `(<polygon> ...)` vectors via `_arrow_polygon()`
 
 ---
 
+## Diagram interchange (OMG DD/DI)
+
+Diagrams serialize to and restore from the element shapes of the OMG
+Diagram Definition specification, v1.1 — Diagram Interchange
+(https://www.omg.org/spec/DD/1.1): `DI::Diagram`, `DI::Shape` (bounds),
+`DI::Edge` (source, target, waypoints), `DC::Point`/`DC::Bounds`, with
+diagramboxes-specific details (ports, pseudostates, arrow styles)
+carried as language-specific DI properties, the extension mechanism DD
+defines for modeling languages.
+
+```python
+from diagramboxes import Diagram, to_di, from_di
+
+d = Diagram()
+a = d.add_node('A', ['block'])
+b = d.add_node('B')
+d.add_edge(a, b, label='conn')
+d.layout()
+
+payload = to_di(d)        # JSON-ready dict
+json.dump(payload, open('model.di.json', 'w'))
+
+d2 = from_di(json.load(open('model.di.json')))
+assert d2.render() == d.render()
+```
+
+Round trips are exact: ids, styles, ports, waypoints, geometry, and
+composite nesting (view children, state substates) all survive. Call
+`layout()` before `to_di` if you want computed coordinates in the file.
+
 ## API Reference
 
 ### Package exports (`__init__.py`)
