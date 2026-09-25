@@ -309,6 +309,188 @@ def _shape_from_dict(sd):
     return el
 
 
+
+
+# ---------------------------------------------------------------------------
+# XMI projection (same shapes, xmi:XMI document form)
+# ---------------------------------------------------------------------------
+
+def _xml_escape(text):
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _bounds_xml(b, indent):
+    x, y, w, h = b
+    return '%s<bounds x="%g" y="%g" width="%g" height="%g"/>' % (
+        indent, x, y, w, h)
+
+
+def _point_xml(x, y, indent):
+    return '%s<waypoint x="%g" y="%g"/>' % (indent, x, y)
+
+
+def _shape_xml(sd, indent):
+    """One DI::Shape element (recursive over ownedElement)."""
+    eid = sd["localId"]
+    kind = sd.get(_DD_KIND, "Node")
+    lines = ['%s<di:Shape xmi:id="%s" ddKind="%s">' % (indent, eid, kind)]
+    lines.append(_bounds_xml(sd.get("bounds") or [0, 0, 0, 0], indent + "  "))
+    name = sd.get("name")
+    if name is not None:
+        lines.append('%s<name>%s</name>' % (indent + "  ", _xml_escape(name)))
+    for st in sd.get("stereotypes", []):
+        lines.append('%s<stereotype>%s</stereotype>'
+                     % (indent + "  ", _xml_escape(st)))
+    for at in sd.get("attributes", []):
+        lines.append('%s<attribute>%s</attribute>'
+                     % (indent + "  ", _xml_escape(at)))
+    for pd in sd.get("ports", []):
+        attrs = ['label="%s"' % _xml_escape(pd.get("label", "")),
+                 'side="%s"' % pd.get("side", "left")]
+        if pd.get("offset") is not None:
+            attrs.append('offset="%g"' % pd["offset"])
+        if pd.get("direction"):
+            attrs.append('direction="%s"' % pd["direction"])
+        if pd.get(_DD_KIND):
+            attrs.append('%s="%s"' % (_DD_KIND, pd[_DD_KIND]))
+        lines.append('%s<port %s/>' % (indent + "  ", " ".join(attrs)))
+    for cd in sd.get("ownedElement", []):
+        lines.append(_shape_xml(cd, indent + "  "))
+    if sd.get("substates"):
+        lines.append('%s<substates>%s</substates>'
+                     % (indent + "  ",
+                        " ".join(sd["substates"])))
+    if sd.get("deep"):
+        lines.append('%s<deep>true</deep>' % indent)
+    if sd.get("text"):
+        lines.append('%s<body>%s</body>' % (indent + "  ", _xml_escape(sd["text"])))
+    lines.append('%s</di:Shape>' % indent)
+    return "\n".join(lines)
+
+
+def _xmi_id(el):
+    """Read ``xmi:id`` handling both namespaced and plain spellings."""
+    XMI = "{http://www.omg.org/spec/XMI/20131001}"
+    return el.get(XMI + "id") or el.get("xmi:id")
+
+
+def _parse_shape_element(el):
+    """Parse one di:Shape XML element into a DI payload dict."""
+    sd = {"xmiType": "DI:Shape", "localId": _xmi_id(el),
+          _DD_KIND: el.get("ddKind", "Node")}
+    b = el.find("bounds")
+    if b is not None:
+        sd["bounds"] = [float(b.get("x", 0)), float(b.get("y", 0)),
+                        float(b.get("width", 0)), float(b.get("height", 0))]
+    nm = el.find("name")
+    if nm is not None:
+        sd["name"] = nm.text or ""
+    body = el.find("body")
+    if body is not None:
+        sd["text"] = body.text or ""
+    deep = el.find("deep")
+    if deep is not None:
+        sd["deep"] = deep.text == "true"
+    subs = el.find("substates")
+    if subs is not None and subs.text:
+        sd["substates"] = subs.text.split()
+    stereotypes = [st.text for st in el.findall("stereotype") if st.text]
+    if stereotypes:
+        sd["stereotypes"] = stereotypes
+    attributes = [at.text for at in el.findall("attribute") if at.text]
+    if attributes:
+        sd["attributes"] = attributes
+    ports = []
+    for pe in el.findall("port"):
+        pd = {"label": pe.get("label", ""), "side": pe.get("side", "left")}
+        if pe.get("offset") is not None:
+            pd["offset"] = float(pe.get("offset"))
+        if pe.get("direction"):
+            pd["direction"] = pe.get("direction")
+        if pe.get(_DD_KIND):
+            pd[_DD_KIND] = pe.get(_DD_KIND)
+        ports.append(pd)
+    if ports:
+        sd["ports"] = ports
+    kids = []
+    for child in el.findall("ownedElement"):
+        kids.append(_parse_shape_element(child))
+    if kids:
+        sd["ownedElement"] = kids
+    return sd
+
+
+def to_di_xmi(payload, name="Diagram"):
+    """Project a :func:`to_di` payload into an XMI document using the
+    DD v1.1 DI/DC namespaces (the form DI-reading tools consume).
+
+    Parameters
+    ----------
+    payload : dict
+        A DI-shaped dictionary from :func:`to_di`.
+    name : str, optional
+        Diagram name written on the ``di:Diagram`` element.
+
+    Returns
+    -------
+    str
+        The ``xmi:XMI`` XML document as text.
+
+    .. versionadded:: 0.6.1
+    """
+    out = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xmi:XMI xmi:version="2.5"',
+        '     xmlns:xmi="http://www.omg.org/spec/XMI/20131001"',
+        '     xmlns:di="%s"' % DI_NS,
+        '     xmlns:dc="%s"' % DC_NS,
+        '     xmlns:dg="%s">' % DG_NS,
+        '  <di:Diagram xmi:id="_d" name="%s">' % _xml_escape(name),
+    ]
+    for sd in payload.get("ownedElement", []):
+        out.append(_shape_xml(sd, "    "))
+    for ed in payload.get("edges", []):
+        eattrs = []
+        if ed.get("lineStyle"):
+            eattrs.append('lineStyle="%s"' % ed["lineStyle"])
+        if ed.get("sourceStyle"):
+            eattrs.append('sourceStyle="%s"' % ed["sourceStyle"])
+        if ed.get("targetStyle"):
+            eattrs.append('targetStyle="%s"' % ed["targetStyle"])
+        lines = ['    <di:Edge xmi:id="%s" source="%s" target="%s"%s>'
+                 % (ed["localId"], ed.get("source"), ed.get("target"),
+                    (" " + " ".join(eattrs)) if eattrs else "")]
+        for x, y in ed.get("waypoint", []):
+            lines.append(_point_xml(x, y, "      "))
+        label = ed.get("label")
+        if label:
+            lines.append('      <name>%s</name>' % _xml_escape(label))
+        sp = ed.get("sourcePort")
+        if sp:
+            attrs = ['label="%s"' % _xml_escape(sp.get("label", "")),
+                     'side="%s"' % sp.get("side", "left")]
+            if sp.get("offset") is not None:
+                attrs.append('offset="%g"' % sp["offset"])
+            if sp.get("direction"):
+                attrs.append('direction="%s"' % sp["direction"])
+            lines.append('      <sourcePort %s/>' % " ".join(attrs))
+        tp = ed.get("targetPort")
+        if tp:
+            attrs = ['label="%s"' % _xml_escape(tp.get("label", "")),
+                     'side="%s"' % tp.get("side", "left")]
+            if tp.get("offset") is not None:
+                attrs.append('offset="%g"' % tp["offset"])
+            if tp.get("direction"):
+                attrs.append('direction="%s"' % tp["direction"])
+            lines.append('      <targetPort %s/>' % " ".join(attrs))
+        lines.append('    </di:Edge>')
+        out.append("\n".join(lines))
+    out.append("  </di:Diagram>")
+    out.append("</xmi:XMI>")
+    return "\n".join(out)
+
+
 def from_di(payload):
     """Restore a :class:`~diagramboxes.layout.Diagram` from a payload
     produced by :func:`to_di`.
@@ -351,7 +533,7 @@ def from_di(payload):
                 d.nodes.append(el)
 
     for sd in payload.get("ownedElement", []):
-            walk(sd)
+        walk(sd)
 
     # Pass 2: composite-structure children (parents exist by now)
     def wire(sd, el):
@@ -399,3 +581,94 @@ def from_di(payload):
             t.ports.append(e.target_port)
         d.edges.append(e)
     return d
+
+
+def from_di_xmi(xml_text):
+    """Restore a :func:`from_di`-compatible payload from an ``xmi:XMI``
+    document produced by :func:`to_di_xmi`.  Chain with
+    :func:`from_di` for the Diagram object::
+
+        d2 = from_di(from_di_xmi(xml_text))
+
+    .. versionadded:: 0.6.1
+    """
+    import xml.etree.ElementTree as ET
+
+    di_tag = "{%s}" % DI_NS
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ValueError("invalid XMI document: %s" % exc)
+    diagram = root.find("%sDiagram" % di_tag)
+    if diagram is None:
+        raise ValueError("no di:Diagram element in the XMI document")
+
+    sd = {"xmiType": "DI:Diagram", "namespace": DI_NS,
+          "diVersion": DI_VERSION, "dcNs": DC_NS, "dgNs": DG_NS,
+          "generator": "diagramboxes", "ownedElement": [], "edges": []}
+
+    def walk(el):
+        """Parse the diagram's direct di:Shape children."""
+        for child in el.findall("%sShape" % di_tag):
+            shape_sd = _parse_shape_element(child)
+            sd["ownedElement"].append(shape_sd)
+            walk_shape(child, shape_sd)
+
+    def walk_shape(el, shape_sd):
+        for child in el:
+            tag = child.tag.split("}")[-1]
+            if tag == "Shape":
+                sub_sd = _parse_shape_element(child)
+                shape_sd.setdefault("ownedElement", []).append(sub_sd)
+                walk_shape(child, sub_sd)
+
+    for child in diagram:
+        tag = child.tag.split("}")[-1]
+        if tag == "Shape":
+            shape_sd = _parse_shape_element(child)
+            sd["ownedElement"].append(shape_sd)
+            walk_shape(child, shape_sd)
+        elif tag == "ownedElement":
+            for sub in child:
+                stag = sub.tag.split("}")[-1]
+                if stag == "Shape":
+                    shape_sd = _parse_shape_element(sub)
+                    sd["ownedElement"].append(shape_sd)
+                    walk_shape(sub, shape_sd)
+
+    for el in diagram.findall("%sEdge" % di_tag):
+        d = {"xmiType": "DI:Edge", "localId": _xmi_id(el),
+             "source": el.get("source"), "target": el.get("target"),
+             "waypoint": []}
+        for w in el.findall("waypoint"):
+            d["waypoint"].append([float(w.get("x", 0)), float(w.get("y", 0))])
+        nm = el.find("name")
+        if nm is not None:
+            d["label"] = nm.text or ""
+        spe = el.find("sourcePort")
+        if spe is not None:
+            d["sourcePort"] = {"label": spe.get("label", ""),
+                               "side": spe.get("side", "left")}
+            if spe.get("offset") is not None:
+                d["sourcePort"]["offset"] = float(spe.get("offset"))
+            if spe.get("direction"):
+                d["sourcePort"]["direction"] = spe.get("direction")
+        tpe = el.find("targetPort")
+        if tpe is not None:
+            d["targetPort"] = {"label": tpe.get("label", ""),
+                               "side": tpe.get("side", "left")}
+            if tpe.get("offset") is not None:
+                d["targetPort"]["offset"] = float(tpe.get("offset"))
+            if tpe.get("direction"):
+                d["targetPort"]["direction"] = tpe.get("direction")
+        ls = el.get("lineStyle")
+        if ls:
+            d["lineStyle"] = ls
+        ss = el.get("sourceStyle")
+        if ss:
+            d["sourceStyle"] = ss
+        ts = el.get("targetStyle")
+        if ts:
+            d["targetStyle"] = ts
+        sd["edges"].append(d)
+    return sd

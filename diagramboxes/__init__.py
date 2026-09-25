@@ -20,4 +20,5 @@ from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg
 from diagramboxes.sugiyama import sugiyama_layout
 from diagramboxes.elk import layout_with_elk
 from diagramboxes.pyelk_layout import layout_with_pyelk
-from diagramboxes.di import to_di, from_di, DI_VERSION, DI_NS, DC_NS, DG_NS
+from diagramboxes.di import (to_di, from_di, to_di_xmi, from_di_xmi,
+                             DI_VERSION, DI_NS, DC_NS, DG_NS)

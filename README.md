@@ -534,6 +534,17 @@ d2 = from_di(json.load(open('model.di.json')))
 assert d2.render() == d.render()
 ```
 
+The same payload projects into an `xmi:XMI` document using the DD DI/DC
+namespaces (`to_di_xmi` / `from_di_xmi`) — the form DI-reading tools
+consume:
+
+```python
+from diagramboxes import to_di_xmi, from_di_xmi
+
+xml = to_di_xmi(payload, name='MyDiagram')   # xmi:XMI text
+d3 = from_di(from_di_xmi(xml))               # same exact restore
+```
+
 Round trips are exact: ids, styles, ports, waypoints, geometry, and
 composite nesting (view children, state substates) all survive. Call
 `layout()` before `to_di` if you want computed coordinates in the file.

@@ -149,3 +149,55 @@ class TestJsonFile:
         d2 = from_di(to_di(d))
         d2.layout()
         assert d2.nodes[0].w > 0 and d2.edges[0].waypoints
+
+
+class TestXmiProjection:
+    """to_di_xmi / from_di_xmi: the same payload projected into an
+    xmi:XMI document using the DD DI/DC namespaces."""
+
+    def test_xmi_structure(self):
+        from diagramboxes.di import to_di_xmi
+        xml = to_di_xmi(to_di(_sample()), name="TestDiagram")
+        assert xml.startswith('<?xml version="1.0"')
+        assert 'xmlns:di="http://www.omg.org/spec/DD/20131001/DI"' in xml
+        assert 'xmlns:dc="http://www.omg.org/spec/DD/20131001/DC"' in xml
+        assert '<di:Diagram xmi:id="_d" name="TestDiagram">' in xml
+        assert '<di:Shape xmi:id="n1"' in xml
+        assert '<di:Edge xmi:id="e' in xml
+        assert xml.rstrip().endswith("</xmi:XMI>")
+
+    def test_xmi_round_trip_render_identical(self):
+        from diagramboxes.di import from_di_xmi, to_di_xmi
+        d = _sample()
+        xml = to_di_xmi(to_di(d), name="TestDiagram")
+        d2 = from_di(from_di_xmi(xml))
+        assert d2.render(routing='orthogonal') == \
+            d.render(routing='orthogonal')
+
+    def test_xmi_round_trip_edges_and_ports(self):
+        from diagramboxes.di import from_di_xmi, from_di, to_di_xmi
+        d = _sample()
+        d2 = from_di(from_di_xmi(to_di_xmi(to_di(d))))
+        e2 = next(e for e in d2.edges if e.label == 'conn')
+        e1 = next(e for e in d.edges if e.label == 'conn')
+        assert e2.source_port.label == 'out'
+        assert e2.source_port.direction == 'out'
+        assert e2.waypoints == e1.waypoints
+        assert e2.target_style == e1.target_style
+
+    def test_xmi_round_trip_nesting_and_kinds(self):
+        from diagramboxes.di import from_di_xmi, from_di, to_di_xmi
+        from diagramboxes.layout import StateNode
+        d = _sample()
+        d2 = from_di(from_di_xmi(to_di_xmi(to_di(d))))
+        assert d2.views[0].children[0].name == 'Inner'
+        s2 = next(n for n in d2.nodes if isinstance(n, StateNode))
+        assert [x.name for x in s2.substates] == ['S1a']
+        assert any(p.label == 'entry1' and getattr(p, 'kind', None) == 'entry'
+                   for p in s2.ports)
+        assert d2.comments[0].text == 'hello'
+
+    def test_from_di_xmi_rejects_non_di_document(self):
+        from diagramboxes.di import from_di_xmi
+        with pytest.raises(ValueError):
+            from_di_xmi('<?xml version="1.0"?><xmi:XMI/>')
