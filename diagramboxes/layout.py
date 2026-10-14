@@ -1025,6 +1025,13 @@ class Diagram:
         return self.add_edge(view, viewpoint, line_style=DASHED,
                              target_style=OPEN, label='«conform»')
 
+    def allocation(self, source, target):
+        """«allocate» dependency (§12): allocation is a cross-cutting
+        relationship, never a dedicated diagram (§12.2) — e.g. behavior
+        → structure, requirement → structure."""
+        return self.add_edge(source, target, line_style=DASHED,
+                             target_style=OPEN, label='«allocate»')
+
     def add_frame(self, kind, element_kind=None, element_name=None,
                   diagram_name=None):
         """Set the diagram-kind frame (replaces any previous frame).
