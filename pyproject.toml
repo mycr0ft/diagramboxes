@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "diagramboxes"
-version = "0.9.0"
+version = "0.9.6"
 description = "UML/SysML block diagrams in your terminal (and SVG)"
 authors = []
 
