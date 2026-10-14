@@ -282,8 +282,35 @@ def draw_arrowhead(c, x, y, angle, style):
 
 # ── straight-line relation (one segment) ──
 
+def edge_end_label_positions(points, keep_away=None, used_labels=None):
+    """Anchor positions for the source-end and target-end labels of an
+    edge routed through ``points`` — ((sx, sy), (tx, ty)) or ``(None, None)``
+    for routes with fewer than two points.
+
+    The label anchor sits 12 px along the first/last segment from the
+    endpoint, offset 6 px right of a vertical segment or 5 px above a
+    horizontal one (SysML v1 end-notation, §3.5).
+    """
+    pts = list(points)
+    if len(pts) < 2:
+        return None, None
+
+    def _near(pos, nxt, k=12):
+        x1, y1 = pos
+        x2, y2 = nxt
+        if x1 == x2:
+            return (x1 + 6, y1 + (k if y2 > y1 else -k))
+        return (x1 + (k if x2 > x1 else -k), y1 - 5)
+
+    spos = _near(pts[0], pts[1])
+    tpos = _near(pts[-1], pts[-2])
+    return spos, tpos
+
+
 def draw_relation(c, x1, y1, x2, y2, line_style=SOLID, source=None, target=None, label=None,
-                  source_node=None, target_node=None):
+                  source_node=None, target_node=None,
+                  source_label=None, target_label=None,
+                  item_flow=None, item_position=0.5):
     """Draw a straight-line relation with optional arrowheads and label.
 
     Parameters
@@ -344,12 +371,65 @@ def draw_relation(c, x1, y1, x2, y2, line_style=SOLID, source=None, target=None,
             lx = int(mx + perp_x * 8)
             ly = int(my + perp_y * 8)
             c.set_text(lx, ly, label)
+    if source_label or target_label:
+        spos, tpos = edge_end_label_positions([(x1, y1), (x2, y2)])
+        if (spos is not None and tpos is not None
+                and (x1 != x2 or y1 != y2)):
+            vert = x1 == x2
+            if source_label:
+                c.set_text(spos[0] + (2 if vert else -len(source_label) // 2),
+                           spos[1], source_label)
+            if target_label:
+                c.set_text(tpos[0] + (2 if vert else -len(target_label) // 2),
+                           tpos[1], target_label)
+    if item_flow:
+        r = route_point_at([(x1, y1), (x2, y2)], item_position)
+        if r:
+            fx, fy, fangle = r
+            draw_arrowhead(c, int(fx), int(fy), fangle, FILLED)
+            vx = cos(fangle)
+            if abs(vx) > 0.7:
+                c.set_text(int(fx - vx * (len(item_flow) * 2 + 2)), int(fy - 2),
+                           item_flow)
+            else:
+                c.set_text(int(fx + 2), int(fy), item_flow)
 
 
 # ── multi-segment (orthogonal) polyline ──
 
+def route_point_at(points, fraction=0.5):
+    """``(x, y, angle)`` at a 0..1 fraction along the Manhattan route's
+    path length — or ``None`` for routes with fewer than two points.
+    ``angle`` points along the segment (source → target)."""
+    pts = list(points)
+    if len(pts) < 2:
+        return None
+    total = sum(abs(pts[i + 1][0] - pts[i][0]) + abs(pts[i + 1][1] - pts[i][1])
+                for i in range(len(pts) - 1))
+    if total == 0:
+        return None
+    dist = total * (fraction if fraction is not None else 0.5)
+    acc = 0
+    for i in range(len(pts) - 1):
+        x1, y1 = pts[i]
+        x2, y2 = pts[i + 1]
+        seg = abs(x2 - x1) + abs(y2 - y1)
+        if acc + seg >= dist:
+            rem = dist - acc
+            if x1 == x2:
+                return (x1, y1 + (rem if y2 > y1 else -rem),
+                        atan2(y2 - y1, 0))
+            return (x1 + (rem if x2 > x1 else -rem), y1,
+                    atan2(0, x2 - x1))
+        acc += seg
+    return (pts[-1][0], pts[-1][1],
+            atan2(pts[-1][1] - pts[-2][1], pts[-1][0] - pts[-2][0]))
+
+
 def draw_polyline(c, points, line_style=SOLID, source=None, target=None, label=None,
-                  used_labels=None, keep_away=None, source_node=None, target_node=None):
+                  used_labels=None, keep_away=None, source_node=None, target_node=None,
+                  source_label=None, target_label=None,
+                  item_flow=None, item_position=0.5):
     """Draw an orthogonal polyline through waypoints with arrowheads.
 
     used_labels : set of (x, y) tuples — occupied label positions to avoid.
@@ -456,6 +536,28 @@ def draw_polyline(c, points, line_style=SOLID, source=None, target=None, label=N
                 else:
                     used_labels.add((lx, ly))
             c.set_text(lx, ly, label)
+    if (source_label or target_label) and len(points) >= 2:
+        spos, tpos = edge_end_label_positions(list(points))
+        pairs = ((source_label, spos, points[0][0] == points[1][0]),
+                 (target_label, tpos, points[-1][0] == points[-2][0]))
+        for lab, pos, vert in pairs:
+            if not lab or pos is None:
+                continue
+            if vert:
+                c.set_text(pos[0] + 2, pos[1], lab)
+            else:
+                c.set_text(pos[0] - len(lab) // 2, pos[1], lab)
+    if item_flow and len(points) >= 2:
+        r = route_point_at(list(points), item_position)
+        if r:
+            fx, fy, fangle = r
+            draw_arrowhead(c, fx, fy, fangle, FILLED)
+            vx, vy = cos(fangle), sin(fangle)
+            if abs(vx) > 0.7:   # horizontal segment: label upstream of the arrow
+                c.set_text(int(fx - vx * (len(item_flow) * 2 + 2)), int(fy - 2),
+                           item_flow)
+            else:               # vertical segment: label right of the arrow
+                c.set_text(int(fx + 2), int(fy), item_flow)
 
 
 # ── port box ──
@@ -481,6 +583,8 @@ def _port_arrow(side, direction):
         in_left='\u2192', in_right='\u2190', in_top='\u2193', in_bottom='\u2191',
         out_left='\u2190', out_right='\u2192', out_top='\u2191', out_bottom='\u2193',
         inout_left='\u2194', inout_right='\u2194', inout_top='\u2195', inout_bottom='\u2195',
+        nonatomic_left='< >', nonatomic_right='< >',
+        nonatomic_top='< >', nonatomic_bottom='< >',
     )
     return arrows.get(f'{direction}_{side}')
 
@@ -720,7 +824,44 @@ def draw_entry_exit_point(c, cx, cy, r, label=None, kind='entry'):
 
 # ── box ──
 
-def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, rounded=False, dashed=False):
+def _class_box_sections(stereotypes, name, attributes, compartments):
+    """Content sections of a classifier box, top to bottom.
+
+    Returns a list of ``(kind, payload)`` tuples where ``kind`` is
+    ``'text'`` (payload is the string) or ``'sep'`` (a full-width
+    horizontal separator line).  Shared by the braille and SVG renderers
+    so both draw the same structure: stereotypes, name, then the unnamed
+    attribute compartment, then any named compartments — each named
+    compartment is a separator, a centered title line, and content lines
+    (SysML v1 block-notation, Delligatti §3.4).
+    """
+    sections = []
+    for s in stereotypes or []:
+        sections.append(('text', '\u00ab%s\u00bb' % s))
+    sections.append(('text', name))
+    if attributes:
+        sections.append(('sep', ''))
+        for a in attributes:
+            sections.append(('text', a))
+    for title, lines in compartments or []:
+        sections.append(('sep', ''))
+        sections.append(('title', title))
+        for l in lines:
+            sections.append(('text', l))
+    return sections
+
+
+def draw_diagram_frame(c, x1, y1, x2, y2, header):
+    """Enclosing SysML v1 diagram-kind frame: border rectangle with the
+    header string in a strip along the top edge (Delligatti §2.4/§3.3)."""
+    for rx, ry in line(x1, y1, x2, y1): c.set(rx, ry)
+    for rx, ry in line(x2, y1, x2, y2): c.set(rx, ry)
+    for rx, ry in line(x2, y2, x1, y2): c.set(rx, ry)
+    for rx, ry in line(x1, y2, x1, y1): c.set(rx, ry)
+    c.set_text(x1 + 3, y1 + 4, header)
+
+
+def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, rounded=False, dashed=False, compartments=None):
     """Draw a rectangular classifier box with centered text.
 
     The box has four borders. Inside it renders (top to bottom):
@@ -778,17 +919,10 @@ def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, r
             for rx, ry in line(x2, y2, x1, y2): c.set(rx, ry)
             for rx, ry in line(x1, y2, x1, y1): c.set(rx, ry)
     box_cx = (x1 + x2) // 2
-    lines = []
-    if stereotypes:
-        for s in stereotypes:
-            lines.append(f'\u00ab{s}\u00bb')
-    lines.append(name)
-    if attributes:
-        lines.append('')
-        lines.extend(attributes)
-    for i, txt in enumerate(lines):
+    for i, (kind, txt) in enumerate(_class_box_sections(
+            stereotypes, name, attributes, compartments)):
         y = y1 + 4 + i * 5
-        if txt == '' and attributes:
+        if kind == 'sep':
             for rx, ry in line(x1 + 2, y, x2 - 2, y): c.set(rx, ry)
         else:
             x = box_cx - len(txt)

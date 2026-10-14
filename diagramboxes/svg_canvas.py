@@ -38,9 +38,14 @@ layout.py      : Diagram.render_svg() calls these functions
 from math import atan2, cos, sin, pi
 from xml.sax.saxutils import escape
 
+# proportional font stack for SVG text (drawille-compatible char metrics
+# ≈ 0.6× font-size, matching the 2px/char layout assumption)
+FONT_FAMILY = 'Helvetica, DejaVu Sans, sans-serif'
+
 from diagramboxes.primitives import SOLID, DASHED, NONE, OPEN, TRIANGLE, DIAMOND, FILLED, \
     DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION, CIRCLE, UNOWNED, ARROW_SIZE, COMMENT_FOLD, \
-    ROUNDED_RADIUS, _port_arrow, _arrow_backoff, _node_outward_angle
+    ROUNDED_RADIUS, _port_arrow, _arrow_backoff, _node_outward_angle, _class_box_sections, \
+    edge_end_label_positions, route_point_at
 
 
 def _arrow_polygon(x, y, angle, style):
@@ -215,18 +220,46 @@ class SvgCanvas:
             f'{extras} fill="{fill}" stroke="{stroke}" stroke-width="{width}" />'
         )
 
-    def add_text(self, x, y, text, color=None, size=None, anchor='middle'):
+    def add_text(self, x, y, text, color=None, size=None, anchor='middle',
+                 font_family=None, font_style=None, font_weight=None):
         color = color or self.STROKE
         # font-size matches drawille's 2px/char width
-        # (SVG monospace char-width ≈ 0.6× font-size; 2/0.6 ≈ 3.33)
+        # (proportional char-width ≈ 0.6× font-size; 2/0.6 ≈ 3.33)
         size = size or self.s(10 / 3)
         x, y = self.s(x, y)
         t = escape(text)
+        fam = font_family or FONT_FAMILY
+        style = f' font-style="{font_style}"' if font_style else ''
+        weight = f' font-weight="{font_weight}"' if font_weight else ''
         self.elements.append(
             f'<text x="{x:.1f}" y="{y:.1f}" fill="{color}"'
-            f' font-size="{size:.1f}" font-family="monospace"'
+            f' font-size="{size:.1f}" font-family="{fam}"{style}{weight}'
             f' text-anchor="{anchor}">{t}</text>'
         )
+
+    def add_label(self, x, y, text, anchor='middle', italic=False):
+        """Text with a white halo rectangle, for labels that sit near or
+        on top of lines — the halo erases the line segment beneath the
+        text (readability, Figure 3.1 review). Rendered as a <g> with
+        the rect followed by the text."""
+        size = 10 / 3                       # diagram units
+        pad = 1.2
+        self.add_group()
+        w = len(text) * size * 0.6 + pad * 2
+        h = size * 1.5 + pad
+        if anchor == 'middle':
+            rx = x - w / 2
+        elif anchor == 'start':
+            rx = x - pad
+        else:
+            rx = x - w + pad
+        ry = y - size * 1.25
+        self.elements.append(
+            f'<rect class="halo" x="{rx:.1f}" y="{ry:.1f}"'
+            f' width="{w:.1f}" height="{h:.1f}" fill="white" />')
+        self.add_text(x, y, text, size=self.s(size), anchor=anchor,
+                      font_style='italic' if italic else None)
+        self.close_group()
 
     def add_polygon(self, points, fill=None, stroke=None, width=None, dashed=False):
         fill = fill or 'black'
@@ -353,7 +386,7 @@ def svg_draw_edge(c, e, keep_away=None):
                     for x1, y1, x2, y2 in poly:
                         c.add_line(x1, y1, x2, y2)
                 else:
-                    color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING) else fill
+                    color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, TRIANGLE) else fill
                     c.add_polygon(poly, fill=color, stroke=c.STROKE if color in ('white', 'open') else color)
             if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING):
                 _svg_arrow_extras(c, pts[-1][0], pts[-1][1], target_angle, fill)
@@ -379,7 +412,7 @@ def svg_draw_edge(c, e, keep_away=None):
                     for x1, y1, x2, y2 in poly:
                         c.add_line(x1, y1, x2, y2)
                 else:
-                    color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING) else fill
+                    color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, TRIANGLE) else fill
                     c.add_polygon(poly, fill=color, stroke=c.STROKE if color in ('white', 'open') else color)
             if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING):
                 _svg_arrow_extras(c, pts[0][0], pts[0][1], source_angle, fill)
@@ -418,9 +451,41 @@ def svg_draw_edge(c, e, keep_away=None):
                                    for p in keep_away):
                             lx, ly = pos
                             break
-                    c.add_text(lx, ly, e.label, anchor='middle')
+                    c.add_label(lx, ly, e.label, anchor='middle')
                     break
                 acc += seg
+
+        # Per-end labels (SysML v1 §3.5)
+        spos, tpos = edge_end_label_positions(pts)
+        for lab, pos, vert in ((e.source_label, spos, pts[0][0] == pts[1][0]),
+                               (e.target_label, tpos, pts[-1][0] == pts[-2][0])):
+            if not lab or pos is None:
+                continue
+            c.add_label(pos[0], pos[1], lab,
+                        anchor='start' if vert else 'middle')
+
+        # Item flow (SysML v1 §4.9): filled triangular arrowhead along the
+        # connector with the item type as a halo label near it.  The halo
+        # is drawn FIRST so it erases the connector but not the arrowhead.
+        if getattr(e, 'item_flow', None):
+            r = route_point_at(pts, getattr(e, 'item_position', 0.5))
+            if r:
+                fx, fy, fangle = r
+                vx, vy = cos(fangle), sin(fangle)
+                if abs(vx) > 0.7:   # horizontal → label upstream of the arrow
+                    lx = fx - vx * (len(e.item_flow) * 2 + 10)
+                    c.add_label(lx, fy, e.item_flow, anchor='middle')
+                else:               # vertical → label right of the arrow
+                    c.add_label(fx + 2, fy, e.item_flow, anchor='start')
+                size = ARROW_SIZE
+                hp = fangle + pi / 2
+                hw = size * 0.4
+                bx, by = fx - cos(fangle) * size, fy - sin(fangle) * size
+                c.add_polygon([
+                    (fx, fy),
+                    (bx + cos(hp) * hw, by + sin(hp) * hw),
+                    (bx - cos(hp) * hw, by - sin(hp) * hw),
+                ], fill='black')
     else:
         # Fallback straight line
         sx, sy = e.source.cx, e.source.cy
@@ -459,7 +524,7 @@ def svg_draw_edge(c, e, keep_away=None):
         elif fill == PORTION:
             _svg_draw_portion(c, tx, ty, target_angle)
         elif poly:
-            color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING) else fill
+            color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, TRIANGLE) else fill
             c.add_polygon(poly, fill=color, stroke=c.STROKE if color in ('white', 'open') else color)
         if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING):
             _svg_arrow_extras(c, tx, ty, target_angle, fill)
@@ -476,7 +541,7 @@ def svg_draw_edge(c, e, keep_away=None):
         elif fill == PORTION:
             _svg_draw_portion(c, sx, sy, source_angle)
         elif poly:
-            color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING) else fill
+            color = 'white' if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, TRIANGLE) else fill
             c.add_polygon(poly, fill=color, stroke=c.STROKE if color in ('white', 'open') else color)
         if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING):
             _svg_arrow_extras(c, sx, sy, source_angle, fill)
@@ -484,9 +549,39 @@ def svg_draw_edge(c, e, keep_away=None):
         if e.label:
             mx, my = (sx + tx) // 2, (sy + ty) // 2
             if sx == tx:
-                c.add_text(mx + 12, my, e.label, anchor='middle')
+                c.add_label(mx + 12, my, e.label, anchor='middle')
             else:
-                c.add_text(mx, my - 6, e.label, anchor='middle')
+                c.add_label(mx, my - 6, e.label, anchor='middle')
+        if e.source_label or e.target_label:
+            spos, tpos = edge_end_label_positions([(sx, sy), (tx, ty)])
+            if spos is not None and tpos is not None and (sx != tx or sy != ty):
+                vert = sx == tx
+                if e.source_label:
+                    c.add_label(spos[0], spos[1], e.source_label,
+                                anchor='start' if vert else 'middle')
+                if e.target_label:
+                    c.add_label(tpos[0], tpos[1], e.target_label,
+                                anchor='start' if vert else 'middle')
+        if getattr(e, 'item_flow', None):
+            r = route_point_at([(sx, sy), (tx, ty)],
+                               getattr(e, 'item_position', 0.5))
+            if r:
+                fx, fy, fangle = r
+                vx = cos(fangle)
+                if abs(vx) > 0.7:
+                    lx = fx - vx * (len(e.item_flow) * 2 + 10)
+                    c.add_label(lx, fy, e.item_flow, anchor='middle')
+                else:
+                    c.add_label(fx + 2, fy, e.item_flow, anchor='start')
+                size = ARROW_SIZE
+                hp = fangle + pi / 2
+                hw = size * 0.4
+                bx, by = fx - cos(fangle) * size, fy - sin(fangle) * size
+                c.add_polygon([
+                    (fx, fy),
+                    (bx + cos(hp) * hw, by + sin(hp) * hw),
+                    (bx - cos(hp) * hw, by - sin(hp) * hw),
+                ], fill='black')
 
 
 # ── activity node SVG drawing ──
@@ -545,7 +640,7 @@ def svg_draw_entry_exit_point(c, cx, cy, r, label=None, kind='entry'):
 
 
 def svg_draw_node(c, n):
-    """Draw a node box with stereotypes, name, and attributes."""
+    """Draw a node box with stereotypes, name, and compartments."""
     kw = {}
     if n.rounded:
         kw['rx'] = kw['ry'] = min(ROUNDED_RADIUS, n.w // 4, n.h // 4)
@@ -553,26 +648,41 @@ def svg_draw_node(c, n):
         kw['dashed'] = True
     c.add_rect(n.x, n.y, n.w, n.h, **kw)
     box_cx = n.x + n.w // 2
-    lines = []
-    if n.stereotypes:
-        for s in n.stereotypes:
-            lines.append(f'\u00ab{s}\u00bb')
-    lines.append(n.name)
-
-    # Separator if attributes exist
-    sep_y = n.y + 4 + len(lines) * 5
-
-    if n.attributes:
-        # Draw separator line below name
-        c.add_line(n.x + 2, sep_y, n.x + n.w - 2, sep_y)
-        lines.append('')
-        lines.extend(n.attributes)
-
-    for i, txt in enumerate(lines):
+    sections = _class_box_sections(getattr(n, 'stereotypes', None), n.name,
+                                   getattr(n, 'attributes', None),
+                                   getattr(n, 'compartments', None))
+    for i, (kind, txt) in enumerate(sections):
         y = n.y + 4 + i * 5
-        if txt == '' and n.attributes:
-            continue
-        c.add_text(box_cx, y + 4, txt, anchor='middle')
+        if kind == 'sep':
+            c.add_line(n.x + 2, y, n.x + n.w - 2, y)
+        elif kind == 'title':
+            # compartment titles are italic titles (§3.4, Figure 3.1)
+            c.add_text(box_cx, y + 4, txt, anchor='middle', font_style='italic')
+        else:
+            c.add_text(box_cx, y + 4, txt, anchor='middle')
+
+
+def svg_draw_frame(c, x1, y1, x2, y2, header):
+    """Enclosing SysML v1 diagram-kind frame: plain border rectangle with
+    a dog-eared headline tag holding the header string at the top-left
+    (Delligatti §2.4/§3.3). SVG-only nicety — the braille renderer keeps
+    the header strip."""
+    c.add_rect(x1, y1, x2 - x1, y2 - y1)
+    if header:
+        fold = min(4, (x2 - x1) / 8)
+        tag_h = 10
+        tag_w = min(len(header) * 2 + 10, (x2 - x1) - fold - 4)
+        pts = [
+            (x1, y1),
+            (x1 + tag_w - fold, y1),
+            (x1 + tag_w, y1 + fold),
+            (x1 + tag_w, y1 + tag_h),
+            (x1, y1 + tag_h),
+        ]
+        c.add_group()
+        c.add_polygon(pts, fill='white')
+        c.add_text(x1 + 3, y1 + 7, header, anchor='start')
+        c.close_group()
 
 
 def svg_draw_comment(c, com):

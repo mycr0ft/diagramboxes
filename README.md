@@ -111,6 +111,63 @@ sensor = d.add_node('TemperatureSensor', ['block'],
 The node width auto-sizes to the longest text. Stereotypes are wrapped in
 guillemets (`\u00ab...\u00bb`).
 
+#### Named compartments (SysML v1 block notation)
+
+Beyond the unnamed `attributes` compartment, a node can carry any number of
+NAMED compartments (e.g. `values`, `parts`, `constraints`, `parameters`,
+`flowProperties`), each rendered as a separator line, a centered title, and
+its content lines (Delligatti, *SysML Distilled* §3.4, Figure 3.1):
+
+```python
+fc = d.add_node('Flight Computer', ['block'],
+    compartments=[('constraints', ['sm : Sufficient Memory']),
+                  ('values', ['memoryCapacity : Mb', 'dataPerOrbit : Mb'])])
+```
+
+#### Per-edge-end labels (SysML v1 §3.5)
+
+In addition to the mid-path `label`, an edge can pin a role name and/or
+multiplicity near each end:
+
+```python
+d.compose(satellite, eps, target_label='eps 1')       # diamond at whole end
+d.add_edge(eps, fc, source_label='2..3', label='Power Cable')
+```
+
+#### Diagram-kind frame (SysML v1 §2.4/§3.3)
+
+The whole content can be enclosed in a frame whose header names the diagram
+kind, the kind+name of the model element it represents, and the diagram name:
+
+```python
+d.add_frame('bdd', element_kind='package', element_name='Structure',
+            diagram_name='DellSat-77 Satellite Structure and Properties')
+# header renders as:  bdd [package] Structure [DellSat-77 Satellite Structure and Properties]
+```
+
+In SVG output these render book-style: proportional font (Helvetica stack),
+italic compartment titles, a white halo behind every edge label so lines
+don't strike through the text, and the frame header as a dog-eared tag.
+The braille renderer keeps the same content model with a header strip.
+
+#### Flow-port glyphs and item flows (SysML v1 §3.4.1.5, §4.9)
+
+Ports accept `direction='in'|'out'|'inout'|'nonatomic'` — the last renders
+the `< >` symbol inside the port square (a nonatomic flow port typed by a
+flow specification); `in`/`out` render the atomic-flow-direction arrows.
+
+An edge can carry an item flow: a filled triangular arrowhead along the
+connector (positionable, default midpoint) with the item's type as a halo
+label near it:
+
+```python
+d.add_edge(eps, pc, source_port=po, target_port=pi,
+           item_flow='° C', item_position=0.5)
+```
+
+Item-flow, end-label and compartment content all survive the DI/XMI
+round-trips (`to_di`/`from_di`/`to_di_xmi`/`from_di_xmi`).
+
 ### 3. Edges
 
 An `Edge` connects two nodes, with optional arrowheads at each end and an

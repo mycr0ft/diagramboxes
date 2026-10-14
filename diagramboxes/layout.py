@@ -30,12 +30,12 @@ from drawille import Canvas
 from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box, draw_port_box, \
     draw_comment_box, draw_view_box, draw_start_node, draw_done_node, draw_terminate_node, \
     draw_fork_join_node, draw_decision_node, \
-    draw_history_node, draw_entry_exit_point, \
+    draw_history_node, draw_entry_exit_point, draw_diagram_frame, \
     SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, PORT_W, PORT_H
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
-    svg_draw_history_node, svg_draw_entry_exit_point
+    svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame
 
 _MIN_PORT_SPACING = 8
 from collections import defaultdict
@@ -133,7 +133,14 @@ class Node:
         Stereotype labels shown above the name (e.g. ``['block']``).
     attributes : list of str, optional
         Attribute/method lines shown below a separator
-        (e.g. ``['+ voltage : float', '# state : int']``).
+        (e.g. ``['+ voltage : float', '# state : int']``) — the first,
+        UNNAMED compartment.
+    compartments : list of (name, lines) tuples, optional
+        Additional NAMED compartments below the attributes compartment
+        (SysML v1 block notation, §3.4) — e.g.
+        ``[('values', ['mass : kg']), ('parts', ['p : B [2]'])]``.
+        Each renders as a separator line, a centered title line, and
+        its content lines.
 
     See also
     --------
@@ -141,10 +148,12 @@ class Node:
     Port : Attachable boundary ports.
     """
 
-    def __init__(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False):
+    def __init__(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
+                 compartments=None):
         self.name = name
         self.stereotypes = stereotypes or []
         self.attributes = attributes or []
+        self.compartments = [(t, list(ls)) for t, ls in (compartments or [])]
         self.rounded = rounded
         self.dashed = dashed
         self.ports = []
@@ -162,11 +171,16 @@ class Node:
         tw.append(len(self.name))
         if self.attributes:
             tw.extend(len(a) for a in self.attributes)
+        for title, lines in self.compartments:
+            tw.append(len(title))
+            tw.extend(len(l) for l in lines)
         max_tw = max(tw) if tw else 0
         self.w = max(max_tw * 2 + 6, 26)
         total_lines = len(self.stereotypes) + 1
         if self.attributes:
             total_lines += 1 + len(self.attributes)
+        for title, lines in self.compartments:
+            total_lines += 2 + len(lines)  # separator + title + content
         self.h = total_lines * 5 + 8
 
     def add_port(self, label, side='left', offset=None, direction=None,
@@ -704,6 +718,9 @@ class Edge:
         ``DIAMOND``, ``FILLED``.  Default target_style is ``OPEN``.
     label : str, optional
         Text label placed at the Manhattan midpoint of the route.
+    source_label, target_label : str or None, optional
+        Per-end labels (SysML v1 §3.5): role name and/or multiplicity
+        pinned near each end of the line (e.g. ``source_label='eps 1'``).
     source_port, target_port : Port or None, optional
         Explicit port objects for structured (port-to-port) connections.
         When both are set, the routing uses L-shaped paths instead of
@@ -716,7 +733,9 @@ class Edge:
     """
 
     def __init__(self, source, target, *, line_style=SOLID, source_style=None,
-                 target_style=OPEN, label=None, source_port=None, target_port=None):
+                 target_style=OPEN, label=None, source_port=None, target_port=None,
+                 source_label=None, target_label=None,
+                 item_flow=None, item_position=0.5):
         self.source = source
         self.target = target
         self.source_port = source_port
@@ -725,6 +744,15 @@ class Edge:
         self.source_style = source_style
         self.target_style = target_style
         self.label = label
+        # Per-end labels (SysML v1 association notation, §3.5): role name
+        # and/or multiplicity pinned near each end of the line.
+        self.source_label = source_label
+        self.target_label = target_label
+        # Item flow (SysML v1 §4.9): filled triangular arrowhead along
+        # the connector at ``item_position`` (0..1), with the item's
+        # type as the label near it.
+        self.item_flow = item_flow
+        self.item_position = item_position
         self.waypoints = []
 
     def route(self, *points):
@@ -732,6 +760,42 @@ class Edge:
 
 
 _SPECIAL_TYPES = (Comment, View, StartNode, DoneNode, TerminateNode, ForkJoinNode, DecisionNode)
+
+
+class DiagramFrame:
+    """The enclosing frame of a SysML v1 diagram-kind (Delligatti §2.4, §3.3).
+
+    A frame is an outer border around all diagram content plus a header
+    line naming (1) the diagram kind, (2) the kind of model element the
+    frame represents, (3) the model element name, and (4) the diagram
+    name::
+
+        bdd [package] Structure [DellSat-77 Satellite Structure and Properties]
+
+    Element kinds valid per diagram kind are listed in §2.3/§2.4 of the
+    book (e.g. a BDD frame may represent a package, model, modelLibrary,
+    or view).
+    """
+
+    # vertical space reserved for the header strip above the content
+    HEADER_H = 14
+
+    def __init__(self, kind, element_kind=None, element_name=None, diagram_name=None):
+        self.kind = kind
+        self.element_kind = element_kind
+        self.element_name = element_name
+        self.diagram_name = diagram_name
+
+    @property
+    def header(self):
+        h = self.kind or ''
+        if self.element_kind:
+            h += ' [%s]' % self.element_kind
+        if self.element_name:
+            h += ' %s' % self.element_name
+        if self.diagram_name:
+            h += ' [%s]' % self.diagram_name
+        return h.strip()
 
 
 class Diagram:
@@ -765,9 +829,33 @@ class Diagram:
         self.views = []
         self.activities = []
         self.edges = []
+        self.frame = None  # optional DiagramFrame (SysML v1 diagram-kind)
+
+    def add_frame(self, kind, element_kind=None, element_name=None,
+                  diagram_name=None):
+        """Set the diagram-kind frame (replaces any previous frame).
+
+        Parameters
+        ----------
+        kind : str
+            Diagram-kind tag: ``bdd``, ``ibd``, ``uc``, ``act``, ``sd``,
+            ``stm``, ``par``, ``pkg``, ``req`` (§2.3).
+        element_kind, element_name : str, optional
+            The kind and name of the model element the frame represents
+            (§2.4), e.g. ``'package'`` / ``'Structure'``.
+        diagram_name : str, optional
+            The unique diagram name (§2.4).
+
+        Returns
+        -------
+        DiagramFrame
+        """
+        self.frame = DiagramFrame(kind, element_kind, element_name,
+                                  diagram_name)
+        return self.frame
 
     def add_node(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
-                 parent=None):
+                 parent=None, compartments=None):
         """Create a new node and register it with the diagram.
 
         Parameters
@@ -792,7 +880,8 @@ class Diagram:
         Node
             The newly created node.
         """
-        n = Node(name, stereotypes, attributes, rounded, dashed)
+        n = Node(name, stereotypes, attributes, rounded, dashed,
+                 compartments)
         if parent is not None:
             parent.add_child(n)
         self.nodes.append(n)
@@ -1180,7 +1269,8 @@ class Diagram:
             Endpoint nodes.
         **kw
             Passed to ``Edge``: ``line_style``, ``source_style``,
-            ``target_style``, ``label``, ``source_port``, ``target_port``.
+            ``target_style``, ``label``, ``source_label``,
+            ``target_label``, ``source_port``, ``target_port``.
 
         Returns
         -------
@@ -1703,11 +1793,15 @@ class Diagram:
         tgt_bottom = e.target.y + e.target.h
         cands = []
 
-        # Band between the two boxes (when they don't overlap vertically)
+        # Band between the two boxes (when they don't overlap vertically).
+        # Middle-out ordering: bands hugging an adjacent box's edge produce
+        # wrap-arounds that graze the box (and any halo labels on them).
         lo, hi = min(src_bottom, tgt_top), max(src_bottom, tgt_top)
         if hi - lo > 12:
             step = max(8, (hi - lo) // 8)
-            cands.extend(range(lo + 6, hi - 6, step))
+            band = list(range(lo + 6, hi - 6, step))
+            band.sort(key=lambda y: abs(y - (lo + hi) / 2))
+            cands.extend(band)
 
         # Just beyond the target box (above and below)
         for base in (tgt_top - 6, tgt_top - 14, tgt_top - 24,
@@ -2150,6 +2244,64 @@ class Diagram:
             else:
                 self._route_straight(e, layer_of)
 
+    def _content_bounds(self):
+        """Union bounding box of all rendered content (nodes+ports, comments,
+        views, activities, edge waypoints) — (min_x, min_y, max_x, max_y),
+        or ``None`` when the diagram is empty."""
+        xs, ys = [], []
+        for n in self.nodes:
+            xs.extend([n.x, n.x + n.w])
+            ys.extend([n.y, n.y + n.h])
+            for p in n.ports:
+                xs.extend([p.x, p.x + p.w])
+                ys.extend([p.y, p.y + p.h])
+                # outside port labels extend beyond the port box — count
+                # their estimated width so the canvas never clips them
+                lab = getattr(p, 'label', '')
+                if lab:
+                    lw = len(lab) * 2 + 6
+                    if p.side == 'right':
+                        xs.append(p.x + p.w + lw)
+                    elif p.side == 'left':
+                        xs.append(p.x - lw)
+                    elif p.side == 'bottom':
+                        ys.append(p.y + p.h + 10)
+                    elif p.side == 'top':
+                        ys.append(p.y - 10)
+        for com in self.comments:
+            xs.extend([com.x, com.x + com.w])
+            ys.extend([com.y, com.y + com.h])
+        for v in self.views:
+            xs.extend([v.x, v.x + v.w])
+            ys.extend([v.y, v.y + v.h])
+        for a in self.activities:
+            xs.extend([a.x, a.x + a.w])
+            ys.extend([a.y, a.y + a.h])
+        for e in self.edges:
+            for px, py in e.waypoints:
+                xs.append(px)
+                ys.append(py)
+        if not xs:
+            return None
+        return min(xs), min(ys), max(xs), max(ys)
+
+    def _frame_rect(self):
+        """Rectangle for the diagram-kind frame around the content margin,
+        widened to fit the header line — (x1, y1, x2, y2) or ``None``."""
+        if self.frame is None:
+            return None
+        b = self._content_bounds()
+        if b:
+            x1, y1, x2, y2 = b
+        else:
+            x1 = y1 = 0
+            x2 = y2 = 40
+        x1 = min(x1 - 4, 4)
+        y1 -= 4
+        x2 = max(x2 + 4, len(self.frame.header) * 2 + 12)
+        y2 += 4
+        return (x1, y1 - DiagramFrame.HEADER_H, x2, y2)
+
     def render(self, c=None, routing='orthogonal', layer_gap=50, node_gap=12, margin=8):
         if c is None:
             c = Canvas()
@@ -2196,6 +2348,10 @@ class Diagram:
                               source=e.source_style,
                               target=e.target_style,
                               label=e.label,
+                              source_label=getattr(e, 'source_label', None),
+                              target_label=getattr(e, 'target_label', None),
+                              item_flow=getattr(e, 'item_flow', None),
+                              item_position=getattr(e, 'item_position', 0.5),
                               used_labels=used_labels,
                               keep_away=keep_away,
                               source_node=e.source,
@@ -2206,6 +2362,10 @@ class Diagram:
                               source=e.source_style,
                               target=e.target_style,
                               label=e.label,
+                              source_label=getattr(e, 'source_label', None),
+                              target_label=getattr(e, 'target_label', None),
+                              item_flow=getattr(e, 'item_flow', None),
+                              item_position=getattr(e, 'item_position', 0.5),
                               source_node=e.source,
                               target_node=e.target)
         child_nodes = self._child_nodes()
@@ -2213,7 +2373,8 @@ class Diagram:
         def _draw_node_tree(node):
             draw_class_box(c, node.x, node.y, node.x + node.w, node.y + node.h,
                            node.name, node.stereotypes, node.attributes,
-                           rounded=node.rounded, dashed=node.dashed)
+                           rounded=node.rounded, dashed=node.dashed,
+                           compartments=getattr(node, 'compartments', None))
             for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
@@ -2251,7 +2412,8 @@ class Diagram:
             draw_view_box(c, v.x, v.y, v.x + v.w, v.y + v.h, v.name, v.stereotypes, v.attributes, dashed=v.dashed)
             for child in v.children:
                 draw_class_box(c, child.x, child.y, child.x + child.w, child.y + child.h,
-                               child.name, child.stereotypes, child.attributes, rounded=child.rounded, dashed=child.dashed)
+                               child.name, child.stereotypes, child.attributes, rounded=child.rounded, dashed=child.dashed,
+                               compartments=getattr(child, 'compartments', None))
                 for p in child.ports:
                     if isinstance(p, (EntryPoint, ExitPoint)):
                         draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
@@ -2283,9 +2445,16 @@ class Diagram:
                               source=e.source_style,
                               target=e.target_style,
                               label=e.label,
+                              source_label=getattr(e, 'source_label', None),
+                              target_label=getattr(e, 'target_label', None),
+                              item_flow=getattr(e, 'item_flow', None),
+                              item_position=getattr(e, 'item_position', 0.5),
                               used_labels=used_labels,
                               source_node=e.source,
                               target_node=e.target)
+        fr = self._frame_rect()
+        if fr is not None and self.frame is not None:
+            draw_diagram_frame(c, fr[0], fr[1], fr[2], fr[3], self.frame.header)
         return c.frame()
 
     def render_svg(self, routing='orthogonal', layer_gap=50, node_gap=12, margin=8, scale=1.5):
@@ -2301,6 +2470,19 @@ class Diagram:
             for p in n.ports:
                 xs.extend([p.x, p.x + p.w])
                 ys.extend([p.y, p.y + p.h])
+                # outside port labels extend beyond the port box — count
+                # their estimated width so the canvas never clips them
+                lab = getattr(p, 'label', '')
+                if lab:
+                    lw = len(lab) * 2 + 6
+                    if p.side == 'right':
+                        xs.append(p.x + p.w + lw)
+                    elif p.side == 'left':
+                        xs.append(p.x - lw)
+                    elif p.side == 'bottom':
+                        ys.append(p.y + p.h + 10)
+                    elif p.side == 'top':
+                        ys.append(p.y - 10)
         for com in self.comments:
             xs.extend([com.x, com.x + com.w])
             ys.extend([com.y, com.y + com.h])
@@ -2317,11 +2499,19 @@ class Diagram:
 
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
+        fr = self._frame_rect()
+        if fr is not None:
+            min_x = min(min_x, fr[0])
+            max_x = max(max_x, fr[2])
+            min_y = min(min_y, fr[1])
+            max_y = max(max_y, fr[3])
         pad = 10
         w = int((max_x - min_x + pad * 2) * scale)
         h = int((max_y - min_y + pad * 2) * scale)
 
         c = SvgCanvas(scale=scale)
+        if fr is not None and self.frame is not None:
+            svg_draw_frame(c, fr[0], fr[1], fr[2], fr[3], self.frame.header)
 
         # Build keep-away sets for label collision avoidance
         all_path_px = set()

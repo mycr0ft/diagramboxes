@@ -8,7 +8,7 @@ from diagramboxes.primitives import (
     draw_history_node, draw_entry_exit_point,
     PORT_W, PORT_H,
 )
-from diagramboxes.layout import Diagram, Node, Edge, Port, Comment, View, StartNode, DoneNode, TerminateNode, \
+from diagramboxes.layout import Diagram, Node, Edge, Port, Comment, View, DiagramFrame, StartNode, DoneNode, TerminateNode, \
     ForkJoinNode, DecisionNode, \
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate, \
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate, \

@@ -149,6 +149,10 @@ def _edge_style_dict(e):
         "sourceStyle": e.source_style,
         "targetStyle": e.target_style,
         "label": e.label,
+        "sourceLabel": getattr(e, "source_label", None),
+        "targetLabel": getattr(e, "target_label", None),
+        "itemFlow": getattr(e, "item_flow", None),
+        "itemPosition": getattr(e, "item_position", 0.5),
     }
 
 
@@ -202,6 +206,9 @@ def to_di(diagram):
         at = getattr(el, "attributes", None)
         if at:
             d["attributes"] = list(at)
+        comp = getattr(el, "compartments", None)
+        if comp:
+            d["compartments"] = [[t, list(ls)] for t, ls in comp]
         if getattr(el, "rounded", False):
             d["rounded"] = True
         if getattr(el, "dashed", False):
@@ -301,7 +308,8 @@ def _shape_from_dict(sd):
         el = Node(name, stereotypes=sd.get("stereotypes"),
                   attributes=sd.get("attributes"),
                   rounded=sd.get("rounded", False),
-                  dashed=sd.get("dashed", False))
+                  dashed=sd.get("dashed", False),
+                  compartments=sd.get("compartments"))
     b = sd.get("bounds") or [0, 0, 0, 0]
     el.x, el.y, el.w, el.h = b
     for pd in sd.get("ports", []):
@@ -345,6 +353,12 @@ def _shape_xml(sd, indent):
     for at in sd.get("attributes", []):
         lines.append('%s<attribute>%s</attribute>'
                      % (indent + "  ", _xml_escape(at)))
+    for comp_name, comp_lines in sd.get("compartments", []):
+        lines.append('%s<compartment name="%s">' % (indent + "  ", _xml_escape(comp_name)))
+        for at in comp_lines:
+            lines.append('%s  <attribute>%s</attribute>'
+                         % (indent + "  ", _xml_escape(at)))
+        lines.append('%s</compartment>' % (indent + "  "))
     for pd in sd.get("ports", []):
         attrs = ['label="%s"' % _xml_escape(pd.get("label", "")),
                  'side="%s"' % pd.get("side", "left")]
@@ -401,6 +415,12 @@ def _parse_shape_element(el):
     attributes = [at.text for at in el.findall("attribute") if at.text]
     if attributes:
         sd["attributes"] = attributes
+    compartments = []
+    for comp in el.findall("compartment"):
+        comp_lines = [at.text for at in comp.findall("attribute") if at.text]
+        compartments.append([comp.get("name", ""), comp_lines])
+    if compartments:
+        sd["compartments"] = compartments
     ports = []
     for pe in el.findall("port"):
         pd = {"label": pe.get("label", ""), "side": pe.get("side", "left")}
@@ -466,6 +486,17 @@ def to_di_xmi(payload, name="Diagram"):
         label = ed.get("label")
         if label:
             lines.append('      <name>%s</name>' % _xml_escape(label))
+        for end, tag in (("sourceLabel", "sourceLabel"),
+                         ("targetLabel", "targetLabel")):
+            v = ed.get(end)
+            if v:
+                lines.append('      <%s>%s</%s>' % (tag, _xml_escape(v), tag))
+        item_flow = ed.get("itemFlow")
+        if item_flow:
+            pos = ed.get("itemPosition")
+            lines.append('      <itemFlow%s>%s</itemFlow>'
+                         % (' position="%g"' % pos if pos is not None else '',
+                            _xml_escape(item_flow)))
         sp = ed.get("sourcePort")
         if sp:
             attrs = ['label="%s"' % _xml_escape(sp.get("label", "")),
@@ -569,7 +600,11 @@ def from_di(payload):
                  line_style=ed.get("lineStyle", "solid"),
                  source_style=ed.get("sourceStyle"),
                  target_style=ed.get("targetStyle", "open"),
-                 label=ed.get("label"))
+                 label=ed.get("label"),
+                 source_label=ed.get("sourceLabel"),
+                 target_label=ed.get("targetLabel"),
+                 item_flow=ed.get("itemFlow"),
+                 item_position=ed.get("itemPosition", 0.5))
         e.waypoints = [tuple(w) for w in ed.get("waypoint", [])]
         sp = ed.get("sourcePort")
         if sp:
@@ -670,5 +705,17 @@ def from_di_xmi(xml_text):
         ts = el.get("targetStyle")
         if ts:
             d["targetStyle"] = ts
+        sl = el.find("sourceLabel")
+        if sl is not None:
+            d["sourceLabel"] = sl.text or ""
+        tl = el.find("targetLabel")
+        if tl is not None:
+            d["targetLabel"] = tl.text or ""
+        item_flow = el.find("itemFlow")
+        if item_flow is not None:
+            d["itemFlow"] = item_flow.text or ""
+            pos_attr = item_flow.get("position")
+            if pos_attr is not None:
+                d["itemPosition"] = float(pos_attr)
         sd["edges"].append(d)
     return sd
