@@ -819,29 +819,36 @@ def svg_draw_view(c, v):
             c.add_text((x1 + x2) // 2, y + 4, attr, anchor='middle')
 
 
-def svg_draw_port(c, p):
-    """Draw a port box with optional direction arrow inside and label
-    outside. Frame ports flip their label to the frame's interior side
-    (the interface symbol keeps the outward face)."""
+def svg_draw_port(c, p, with_label=True):
+    """Draw a port box with optional direction arrow inside. Labels are
+    halo-backed and drawn via ``svg_port_label`` (frame ports flip their
+    label to the frame's interior side); layout defers them until after
+    the edges so the halo erases connector ink, not the reverse."""
     c.add_rect(p.x, p.y, p.w, p.h, fill='white')
     arrow = _port_arrow(p.side, p.direction)
     if arrow:
         c.add_text(p.x + p.w // 2, p.y + p.h // 2 + 2, arrow, anchor='middle')
+    if with_label:
+        svg_port_label(c, p)
+
+
+def svg_port_label(c, p):
+    """Halo-backed port label; frame ports flip to the interior side."""
+    if not getattr(p, 'label', None):
+        return
     side = p.side
     if getattr(p, 'is_frame_port', False):
         side = {'left': 'right', 'right': 'left',
                 'top': 'bottom', 'bottom': 'top'}[side]
-    if p.label:
-        # halo labels (erases any connector passing beneath the text)
-        if side == 'left' and getattr(p, 'label_inside', False):
-            c.add_label(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
-        elif side == 'right' and getattr(p, 'label_inside', False):
-            c.add_label(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
-        elif side == 'left':
-            c.add_label(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
-        elif side == 'right':
-            c.add_label(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
-        elif side == 'top':
-            c.add_label(p.x + p.w // 2, p.y - 4, p.label, anchor='middle')
-        elif side == 'bottom':
-            c.add_label(p.x + p.w // 2, p.y + p.h + 8, p.label, anchor='middle')
+    if side == 'left' and getattr(p, 'label_inside', False):
+        c.add_label(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
+    elif side == 'right' and getattr(p, 'label_inside', False):
+        c.add_label(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
+    elif side == 'left':
+        c.add_label(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
+    elif side == 'right':
+        c.add_label(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
+    elif side == 'top':
+        c.add_label(p.x + p.w // 2, p.y - 4, p.label, anchor='middle')
+    elif side == 'bottom':
+        c.add_label(p.x + p.w // 2, p.y + p.h + 8, p.label, anchor='middle')

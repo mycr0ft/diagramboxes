@@ -34,7 +34,7 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_history_node, draw_entry_exit_point, draw_diagram_frame, \
     SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, CIRCLED_PLUS, PORT_W, PORT_H, \
     INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD, _is_folder
-from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_draw_comment, svg_draw_view, \
+from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
     svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame, \
@@ -2911,6 +2911,7 @@ class Diagram:
                         own.add((x, y1))
             keep_away = all_path_px - own
         child_nodes = self._child_nodes()
+        deferred_port_labels = []
 
         def _svg_node_tree(node):
             svg_draw_node(c, node)
@@ -2918,7 +2919,8 @@ class Diagram:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     svg_draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                 else:
-                    svg_draw_port(c, p)
+                    svg_draw_port(c, p, with_label=False)
+                    deferred_port_labels.append(p)
                 for i in p.interfaces:
                     svg_draw_interface(c, i)
             for i in node.interfaces:
@@ -2957,22 +2959,25 @@ class Diagram:
                     if isinstance(p, (EntryPoint, ExitPoint)):
                         svg_draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                     else:
-                        svg_draw_port(c, p)
+                        svg_draw_port(c, p, with_label=False)
+                        deferred_port_labels.append(p)
                     for i in p.interfaces:
                         svg_draw_interface(c, i)
-                for i in child.interfaces:
-                    svg_draw_interface(c, i)
-        # NOTE: frame ports are drawn AFTER the edges (see below) so their
-        # halo labels erase the connector ink, not the reverse.
+        # NOTE: port labels and frame ports are drawn AFTER the edges so
+        # their halo labels erase the connector ink, not the reverse.
         for e in self.edges:
             if self._is_visual_containment(e):
                 continue
             svg_draw_edge(c, e, keep_away=all_path_px - set(e.waypoints),
                           used_labels=svg_used_labels)
         for p in self.frame_ports:
-            svg_draw_port(c, p)
             for i in p.interfaces:
                 svg_draw_interface(c, i)
+        for p in self.frame_ports:
+            svg_draw_port(c, p, with_label=False)
+            deferred_port_labels.append(p)
+        for p in deferred_port_labels:
+            svg_port_label(c, p)
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node
