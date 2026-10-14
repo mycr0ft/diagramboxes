@@ -72,19 +72,19 @@ def test_svg_viewbox_never_clips_negative_origin_content():
 
 
 def test_frame_port_label_flips_to_frame_interior():
-    """Vision round 3 (Figure 4.6): the port name belongs on the frame's
-    interior side so it never collides with the outward interface
-    label/arc (book: 'solarPanel [2]' inside, 'Light Source' outside)."""
+    """Vision round 4 (Figure 4.6): the port name prints ABOVE the port
+    (label_above, book convention) so it never sits on the connector's
+    row; the interface label stays on the outward side."""
     d, eps, fp = _framed()
     svg = d.render_svg(routing='orthogonal')
     prect = re.search(r'<rect x="(-?[\d.]+)" y="(-?[\d.]+)" '
                       r'width="[\d.]+" height="[\d.]+" fill="white"', svg)
     assert prect, svg
-    px = float(prect.group(1))
-    lm = re.search(r'<text x="(-?[\d.]+)" [^>]*anchor="(?:start|end|middle)"[^>]*>solarPanel', svg)
+    px, py = float(prect.group(1)), float(prect.group(2))
+    lm = re.search(r'<text x="(-?[\d.]+)" y="(-?[\d.]+)"[^>]*>solarPanel', svg)
     assert lm, svg
-    lx = float(lm.group(1))
-    assert lx > px, f"port label '{lx}' must sit inside the frame (right of box at {px})"
+    lx, ly = float(lm.group(1)), float(lm.group(2))
+    assert ly + 6 < py + 2, "port label sits above the port box row"
     ifm = re.search(r'<text x="(-?[\d.]+)"[^>]*>Light Source</text>', svg)
     assert ifm, svg
     assert float(ifm.group(1)) < px, \

@@ -69,7 +69,8 @@ from diagramboxes.layout import (
     StartNode, DoneNode, TerminateNode, ForkJoinNode, DecisionNode,
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate,
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate,
-    HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort,
+    HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort, \
+    Lifeline, SeqMessage, SeqExec, SeqDestruction,
 )
 
 __all__ = ["to_di", "from_di", "DI_VERSION", "DI_NS", "DC_NS", "DG_NS"]
@@ -301,6 +302,24 @@ def to_di(diagram):
         if diagram.frame_ports:
             fd["ports"] = [_port_dict(p) for p in diagram.frame_ports]
         out["diagramFrame"] = fd
+
+    # ── sequence diagram elements (§7.4–7.7) ──
+    li_index = {id(li): i for i, li in enumerate(diagram.lifelines)}
+    if diagram.lifelines:
+        out["lifelines"] = [
+            {"localId": "li%d" % i, "label": li.label, "x": li.x,
+             "headY": li.head_y, "created": li.created}
+            for i, li in enumerate(diagram.lifelines)]
+        out["sequenceMessages"] = [
+            {"kind": m.kind, "src": li_index[id(m.src)],
+             "dst": li_index[id(m.dst)], "y": m.y, "label": m.label}
+            for m in diagram.messages]
+        out["sequenceExecSpecs"] = [
+            {"li": li_index[id(s.lifeline)], "y1": s.y1, "y2": s.y2,
+             "shaded": s.shaded} for s in diagram.exec_specs]
+        out["sequenceDestructions"] = [
+            {"li": li_index[id(x.lifeline)], "y": x.y}
+            for x in diagram.destructions]
     return out
 
 
@@ -597,6 +616,29 @@ def to_di_xmi(payload, name="Diagram"):
                            % (_xml_escape(idf.get("name", "")),
                               idf.get("kind", "provided")))
         out.append('    </di:DiagramFrame>')
+    li_els = payload.get("lifelines", [])
+    for i, ld in enumerate(li_els):
+        attrs = ['label="%s"' % _xml_escape(ld.get("label", "")),
+                 'x="%g"' % ld.get("x", 0),
+                 'headY="%g"' % ld.get("headY", 0)]
+        if ld.get("created"):
+            attrs.append('created="true"')
+        out.append('    <di:Lifeline %s/>' % " ".join(attrs))
+    for md in payload.get("sequenceMessages", []):
+        attrs = ['kind="%s"' % md.get("kind", "async"),
+                 'src="%d"' % md.get("src", 0),
+                 'dst="%d"' % md.get("dst", 0),
+                 'y="%g"' % md.get("y", 0)]
+        if md.get("label"):
+            attrs.append('label="%s"' % _xml_escape(md["label"]))
+        out.append('    <di:SeqMessage %s/>' % " ".join(attrs))
+    for sd_ in payload.get("sequenceExecSpecs", []):
+        out.append('    <di:SeqExec li="%d" y1="%g" y2="%g"%s/>'
+                   % (sd_.get("li", 0), sd_.get("y1", 0), sd_.get("y2", 0),
+                      ' shaded="true"' if sd_.get("shaded") else ''))
+    for dd in payload.get("sequenceDestructions", []):
+        out.append('    <di:SeqDestruction li="%d" y="%g"/>'
+                   % (dd.get("li", 0), dd.get("y", 0)))
     out.append("  </di:Diagram>")
     out.append("</xmi:XMI>")
     return "\n".join(out)
@@ -679,6 +721,31 @@ def from_di(payload):
                     diagram_name=frd.get("diagramName"))
         for pd in frd.get("ports", []):
             d.frame_ports.append(_port_from_dict(pd, None))
+
+    # ── sequence diagram elements (§7.4–7.7) ──
+    for ld in payload.get("lifelines", []):
+        li = d.add_lifeline(ld.get("label", ""),
+                            x=ld.get("x"), created=ld.get("created", False))
+        if ld.get("headY") is not None:
+            li.head_y = int(ld["headY"])
+    lis = list(d.lifelines)
+    for md in payload.get("sequenceMessages", []):
+        si, ti = md.get("src", 0), md.get("dst", 0)
+        if si < len(lis) and ti < len(lis):
+            kind = md.get("kind", "async")
+            m = d._seq_message(lis[si], lis[ti], kind,
+                               md.get("y", 0), md.get("label"))
+            if kind == 'create' and md.get("headY") is not None:
+                m.dst.head_y = md["headY"]
+    for sd_ in payload.get("sequenceExecSpecs", []):
+        i = sd_.get("li", 0)
+        if i < len(lis):
+            d.seq_exec(lis[i], sd_.get("y1", 0), sd_.get("y2", 0),
+                       shaded=sd_.get("shaded", False))
+    for dd in payload.get("sequenceDestructions", []):
+        i = dd.get("li", 0)
+        if i < len(lis):
+            d.destructions.append(SeqDestruction(lis[i], dd.get("y", 0)))
 
     def _edge_port(pd, ref):
         """Rebuild an edge-anchored port. FramePort references bind to the
@@ -848,4 +915,33 @@ def from_di_xmi(xml_text):
         if ports:
             fd["ports"] = ports
         sd["diagramFrame"] = fd
+
+    lif_els = diagram.findall("%sLifeline" % di_tag)
+    for le in lif_els:
+        ld = {"label": str(le.get("label", "")),
+              "x": float(le.get("x", 0)),
+              "headY": float(le.get("headY", 0)),
+              "created": le.get("created") == "true"}
+        sd.setdefault("lifelines", []).append(ld)
+    if lif_els:
+        for me in diagram.findall("%sSeqMessage" % di_tag):
+            sd.setdefault("sequenceMessages", []).append({
+                "kind": str(me.get("kind", "async")),
+                "src": int(me.get("src", 0)),
+                "dst": int(me.get("dst", 0)),
+                "y": float(me.get("y", 0)),
+                "label": str(me.get("label")) if me.get("label") else None,
+            })
+        for se in diagram.findall("%sSeqExec" % di_tag):
+            sd.setdefault("sequenceExecSpecs", []).append({
+                "li": int(se.get("li", 0)),
+                "y1": float(se.get("y1", 0)),
+                "y2": float(se.get("y2", 0)),
+                "shaded": se.get("shaded") == "true",
+            })
+        for de in diagram.findall("%sSeqDestruction" % di_tag):
+            sd.setdefault("sequenceDestructions", []).append({
+                "li": int(de.get("li", 0)),
+                "y": float(de.get("y", 0)),
+            })
     return sd

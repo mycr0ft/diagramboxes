@@ -49,7 +49,7 @@ from diagramboxes.primitives import SOLID, DASHED, NONE, OPEN, TRIANGLE, DIAMOND
     CIRCLED_PLUS, FOLDER_KINDS, _is_folder
 
 
-def _arrow_polygon(x, y, angle, style):
+def _arrow_polygon(x, y, angle, style) -> tuple:
     """Return polygon/fill for an arrowhead, or (lines, None) for OPEN."""
     if style == NONE or style is None or style in (PORTION, CIRCLE, UNOWNED, CIRCLED_PLUS):
         return None, style if style in (PORTION, CIRCLE, UNOWNED, CIRCLED_PLUS) else None
@@ -352,6 +352,64 @@ class SvgCanvas:
         )
         body = '\n'.join(self.elements)
         return f'{header}\n{body}\n</svg>'
+
+
+# ── sequence diagram drawing (§7.4–7.7) ──
+
+def svg_seq_head(c, x, top, label, width=None, head_h=12):
+    """Lifeline head rectangle + name text."""
+    w = width or (len(label) * 2 + 10)
+    c.add_rect(x - w / 2, top, w, head_h, fill='white')
+    c.add_text(x, top + head_h / 2 + 2, label, anchor='middle')
+
+
+def svg_seq_destruction(c, x, y, r=4):
+    """Destruction occurrence X."""
+    c.add_line(x - r, y - r, x + r, y + r)
+    c.add_line(x - r, y + r, x + r, y - r)
+
+
+def svg_seq_exec(c, x, y1, y2, shaded=False, width=8):
+    """Thin vertical execution-specification rectangle."""
+    c.add_rect(x - width / 2, y1, width, y2 - y1,
+               fill='#e8e8e8' if shaded else 'white')
+
+
+def svg_seq_message(c, x1, x2, y, kind, label):
+    """Message line + arrowhead + floating name label (halo)."""
+    dashed = kind in ('reply', 'create', 'delete')
+    c.add_line(x1, y, x2, y, dashed=dashed)
+    a_angle = 0.0 if x2 >= x1 else pi
+    style = FILLED if kind == 'sync' else OPEN
+    poly, fill = _arrow_polygon(x2, y, a_angle, style)
+    lines = poly if isinstance(poly, (list, tuple)) else []
+    if fill == 'open':
+        for lx1, ly1, lx2, ly2 in lines:
+            c.add_line(lx1, ly1, lx2, ly2)
+    elif poly:
+        c.add_polygon(poly, fill='black' if fill == FILLED else fill,
+                      stroke=c.STROKE)
+    if label:
+        c.add_label((x1 + x2) / 2, y - 4, label, anchor='middle')
+
+
+def svg_seq_self_message(c, x, y, kind, label):
+    """Self-message (§7.5): a small loop out and back, arrowhead landing
+    back on the lifeline below the departure."""
+    pts = [(x, y), (x + 30, y), (x + 30, y + 8), (x + 8, y + 8)]
+    dashed = kind in ('reply', 'create', 'delete')
+    c.add_polyline(pts, dashed=dashed)
+    style = FILLED if kind == 'sync' else OPEN
+    poly, fill = _arrow_polygon(x + 8, y + 8, pi, style)
+    lines = poly if isinstance(poly, (list, tuple)) else []
+    if fill == 'open':
+        for lx1, ly1, lx2, ly2 in lines:
+            c.add_line(lx1, ly1, lx2, ly2)
+    elif poly:
+        c.add_polygon(poly, fill='black' if fill == FILLED else fill,
+                      stroke=c.STROKE)
+    if label:
+        c.add_label(x + 33, y + 3, label, anchor='start')
 
 
 # ── High-level drawing functions for diagrams ──

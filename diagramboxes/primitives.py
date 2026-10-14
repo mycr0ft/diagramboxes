@@ -805,6 +805,66 @@ def _draw_arc(c, cx, cy, r, a1, a2, dashed=False):
         px_prev, py_prev = x, y
 
 
+# ── sequence diagram drawing (§7.4–7.7) ──
+
+def draw_seq_head(c, x, top, label, width=None, head_h=12):
+    """Lifeline head (§7.4): rectangle carrying the name string, centred
+    on the dashed-line column."""
+    w = width or (len(label) * 2 + 10)
+    x1, x2 = int(x - w / 2), int(x + w / 2)
+    y1, y2 = top, top + head_h
+    for rx, ry in line(x1, y1, x2, y1):
+        c.set(rx, ry)
+    for rx, ry in line(x2, y1, x2, y2):
+        c.set(rx, ry)
+    for rx, ry in line(x2, y2, x1, y2):
+        c.set(rx, ry)
+    for rx, ry in line(x1, y2, x1, y1):
+        c.set(rx, ry)
+    c.set_text(x1 + 3, y1 + 4, label)
+
+
+def draw_destruction_x(c, x, y, r=4):
+    """Destruction occurrence (§7.6): an X at the bottom of a lifeline."""
+    for px, py in line(x - r, y - r, x + r, y + r):
+        c.set(px, py)
+    for px, py in line(x - r, y + r, x + r, y - r):
+        c.set(px, py)
+
+
+def draw_seq_exec(c, x, y1, y2, shaded=False, width=8):
+    """Execution specification (§7.7): a thin vertical rectangle centred
+    on the lifeline's dashed-line column."""
+    x1, x2 = x - width // 2, x + width // 2
+    for rx, ry in line(x1, y1, x2, y1):
+        c.set(rx, ry)
+    for rx, ry in line(x2, y1, x2, y2):
+        c.set(rx, ry)
+    for rx, ry in line(x2, y2, x1, y2):
+        c.set(rx, ry)
+    for rx, ry in line(x1, y2, x1, y1):
+        c.set(rx, ry)
+    if shaded:
+        for ry in range(y1 + 1, y2):
+            for rx in range(x1 + 1, x2):
+                c.set(rx, ry)
+
+
+def draw_seq_message(c, x1, x2, y, kind, label):
+    """Sequence message (§7.5): horizontal line with the kind's line
+    style (async/sync solid, reply/create/delete dashed), arrowhead
+    landing on the receiver, name string floating above the line."""
+    lo, hi = (int(x1), int(x2)) if x1 <= x2 else (int(x2), int(x1))
+    dashed = kind in ('reply', 'create', 'delete')
+    draw_line(c, lo, int(y), hi, int(y), DASHED if dashed else SOLID)
+    if hi > lo:
+        a_angle = 0.0 if x2 >= x1 else pi
+        style = FILLED if kind == 'sync' else OPEN
+        draw_arrowhead(c, int(x2), int(y), a_angle, style)
+    if label:
+        c.set_text((lo + hi) // 2 - len(label), int(y) - 5, label)
+
+
 # ── activity node drawing ──
 
 def draw_start_node(c, cx, cy, r):

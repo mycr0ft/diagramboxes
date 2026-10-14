@@ -27,17 +27,21 @@ svg_canvas.py    : SVG vector drawing
 """
 from math import atan2, cos, sin, pi, radians
 
-from drawille import Canvas
+from drawille import Canvas, line
 from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box, draw_port_box, \
     draw_comment_box, draw_view_box, draw_start_node, draw_done_node, draw_terminate_node, \
     draw_fork_join_node, draw_decision_node, draw_interface, \
     draw_history_node, draw_entry_exit_point, draw_diagram_frame, \
     SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, CIRCLED_PLUS, PORT_W, PORT_H, \
-    INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD, _is_folder
+    INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD, _is_folder, \
+    draw_seq_head, draw_seq_exec, draw_seq_message, draw_destruction_x, \
+    draw_line, draw_arrowhead
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
     svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame, \
+    svg_seq_head, svg_seq_exec, svg_seq_message, svg_seq_self_message, \
+    svg_seq_destruction, \
     svg_draw_interface
 
 _MIN_PORT_SPACING = 8
@@ -135,6 +139,93 @@ class Port:
 
 # ── interface symbols (lollipop / socket, §3.4.1.5) ──
 # geometry constants come from primitives (single source of truth)
+
+
+# ── sequence diagram elements (§7.4–7.7) ──
+
+SEQ_HEAD_H = 12       # head rectangle height
+SEQ_EXEC_W = 8        # execution-specification rectangle width
+SEQ_GAP = 14          # default row gap for a create message
+
+
+class Lifeline:
+    """One participant instance in an interaction (§7.4): a head
+    rectangle carrying the name string over a dashed tail line
+    descending with time. Positional elements — the layout engine does
+    not route them; rows are y-coordinates supplied by the modeler."""
+
+    def __init__(self, label, x=0, created=False):
+        self.label = label
+        self.x = x                 # the dashed line / head centre column
+        self.head_y = 0            # top of the head rectangle
+        self.created = created
+
+    @property
+    def w(self):
+        return len(self.label) * 2 + 10  # wider than SEQ_HEAD_H tall
+
+    @property
+    def h(self):
+        return SEQ_HEAD_H
+
+    @property
+    def cx(self):
+        return self.x
+
+    @property
+    def tail_start(self):
+        return self.head_y + self.h
+
+    def __repr__(self):
+        return 'Lifeline(%r)' % self.label
+
+
+class SeqMessage:
+    """A message between two lifelines (§7.5): kind is one of 'async'
+    (solid, open arrowhead), 'sync' (solid, filled arrowhead), 'reply'
+    (dashed, open), 'create' (dashed, open, lands on the created
+    lifeline's head), 'delete' (ends in a destruction occurrence).
+    Horizontal at row ``y``."""
+
+    def __init__(self, src, dst, kind, y, label=None):
+        self.src = src
+        self.dst = dst
+        self.kind = kind
+        self.y = y
+        self.label = label
+        self.x1 = 0
+        self.x2 = 0
+
+    @property
+    def line_style(self):
+        """'solid' for async/sync, 'dashed' for reply/create/delete
+        (§7.5.2, Table of message kinds)."""
+        return 'dashed' if self.kind in ('reply', 'create', 'delete') \
+            else 'solid'
+
+    def __repr__(self):
+        return 'SeqMessage(%r->%r %s y=%s)' % (
+            self.src.label, self.dst.label, self.kind, self.y)
+
+
+class SeqExec:
+    """An execution specification (§7.7): a thin vertical rectangle on
+    a lifeline covering the span [y1, y2] of an active behavior."""
+
+    def __init__(self, lifeline, y1, y2, shaded=False):
+        self.lifeline = lifeline
+        self.y1 = y1
+        self.y2 = y2
+        self.shaded = shaded
+
+
+class SeqDestruction:
+    """A destruction occurrence (§7.6): an X at the bottom of a
+    lifeline — its last possible event occurrence."""
+
+    def __init__(self, lifeline, y):
+        self.lifeline = lifeline
+        self.y = y
 
 
 class FramePort(Port):
@@ -943,6 +1034,118 @@ class Diagram:
         self.edges = []
         self.frame = None  # optional DiagramFrame (SysML v1 diagram-kind)
         self.frame_ports = []  # FramePorts straddling the frame border (§4.8)
+        self.lifelines = []    # sequence participants (§7.4)
+        self.messages = []     # SeqMessages (§7.5)
+        self.exec_specs = []   # SeqExec execution specifications (§7.7)
+        self.destructions = []  # SeqDestruction occurrences (§7.6)
+
+    # ── sequence-diagram construction (§7.4–7.7) ──
+
+    def add_lifeline(self, label, x=None, created=False):
+        """Create a lifeline (§7.4). Without an explicit ``x`` the head
+        column auto-spaces after the previous lifeline (head+gap).
+
+        Returns
+        -------
+        Lifeline
+        """
+        li = Lifeline(label, created=created)
+        if x is not None:
+            li.x = x
+        else:
+            li.x = max((l.x + l.w for l in self.lifelines), default=0) + 90
+        self.lifelines.append(li)
+        return li
+
+    def _seq_message(self, src, dst, kind, y, label):
+        m = SeqMessage(src, dst, kind, y, label)
+        if kind == 'create':
+            dst.head_y = y   # arrowhead lands at the created lifeline's head
+            dst.created = True
+        self.messages.append(m)
+        return m
+
+    def seq_async(self, src, dst, y, label=None):
+        """Asynchronous message (§7.5.2): solid line, open arrowhead;
+        the sender proceeds immediately."""
+        return self._seq_message(src, dst, 'async', y, label)
+
+    def seq_sync(self, src, dst, y, label=None):
+        """Synchronous message (§7.5.2): solid line, filled-in
+        arrowhead; the sender waits for the reply."""
+        return self._seq_message(src, dst, 'sync', y, label)
+
+    def seq_reply(self, src, dst, y, label=None):
+        """Reply message (§7.5.2): dashed line, open arrowhead; sent by
+        the performing lifeline back to the invoker."""
+        return self._seq_message(src, dst, 'reply', y, label)
+
+    def seq_create(self, src, dst, label=None, y=None):
+        """Create message (§7.5.2): dashed line, open arrowhead landing
+        on the created lifeline's head; the arrowhead row becomes the
+        created lifeline's head row."""
+        if y is None:
+            y = max((m.y for m in self.messages), default=0) + SEQ_GAP
+        return self._seq_message(src, dst, 'create', y, label)
+
+    def destroy(self, lifeline, y=None):
+        """Destruction occurrence (§7.6): an X at the bottom of the
+        lifeline (its last possible event occurrence). Default row is
+        just past its last event."""
+        if y is None:
+            rows = [m.y for m in self.messages
+                    if m.src is lifeline or m.dst is lifeline]
+            rows += [s.y2 for s in self.exec_specs if s.lifeline is lifeline]
+            y = max(rows, default=lifeline.head_y) + SEQ_GAP - 2
+        x = SeqDestruction(lifeline, y)
+        self.destructions.append(x)
+        return x
+
+    def seq_exec(self, lifeline, y1, y2, shaded=False):
+        """Execution specification (§7.7): a thin vertical rectangle
+        covering the behavior-execution span [y1, y2]. Message ends at
+        rows inside the span attach to the rectangle's edges."""
+        s = SeqExec(lifeline, y1, y2, shaded)
+        self.exec_specs.append(s)
+        return s
+
+    def _lifeline_edge_x(self, li, y):
+        """Where a message end at row ``y`` attaches on ``li``: the
+        execution-spec edge when a spec covers the row (§7.7 attaches
+        arrowheads to the thin rectangle), else the dashed-line column."""
+        for s in self.exec_specs:
+            if s.lifeline is li and s.y1 <= y <= s.y2:
+                return s
+        return None
+
+    def _lifeline_tail_end(self, li):
+        rows = [m.y for m in self.messages if m.src is li or m.dst is li]
+        rows += [s.y2 for s in self.exec_specs if s.lifeline is li]
+        rows += [x.y for x in self.destructions if x.lifeline is li]
+        return max(rows, default=li.tail_start + 20)
+
+    def _event_x(self, li, y, to_right):
+        """Message-end column on ``li`` at row ``y``: the exec-spec edge
+        when a spec covers the row, else the dashed-line column."""
+        s = self._lifeline_edge_x(li, y)
+        if s is None:
+            return li.x
+        return li.x + (SEQ_EXEC_W // 2 if to_right else -SEQ_EXEC_W // 2)
+
+    def _seq_message_endpoints(self, m):
+        """(x1, x2): source-end column, arrowhead-end column."""
+        if m.src is m.dst:
+            return m.src.x, m.src.x
+        to_right = m.dst.x >= m.src.x
+        x_src = self._event_x(m.src, m.y, to_right)
+        x_dst = self._event_x(m.dst, m.y, m.src.x >= m.dst.x)
+        return x_src, x_dst
+
+    def _update_seq_geometry(self):
+        """Cache message endpoint columns (render-time; exec specs may
+        be added after the messages)."""
+        for m in self.messages:
+            m.x1, m.x2 = self._seq_message_endpoints(m)
 
     def add_frame_port(self, label, side='left', offset=0.5, direction=None):
         """Create a port on the diagram-kind frame's border (§4.8,
@@ -2540,6 +2743,10 @@ class Diagram:
             for px, py in e.waypoints:
                 xs.append(px)
                 ys.append(py)
+        for li in self.lifelines:
+            xs.extend([li.x - li.w / 2, li.x + li.w / 2])
+            ys.extend([li.head_y, li.head_y + li.h,
+                       self._lifeline_tail_end(li)])
         if not xs:
             return None
         return min(xs), min(ys), max(xs), max(ys)
@@ -2750,6 +2957,33 @@ class Diagram:
                 draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+
+        # ── sequence diagram elements (§7.4–7.7) ──
+        self._update_seq_geometry()
+        for li in self.lifelines:
+            draw_seq_head(c, li.x, li.head_y, li.label)
+            draw_line(c, li.x, li.tail_start, li.x,
+                      self._lifeline_tail_end(li), DASHED)
+        for s in self.exec_specs:
+            draw_seq_exec(c, s.lifeline.x, s.y1, s.y2, s.shaded,
+                          width=SEQ_EXEC_W)
+        for m in self.messages:
+            if m.src is m.dst:
+                # self-message loop (§7.5: a lifeline may message itself)
+                for px, py in line(m.src.x, m.y, m.src.x + 30, m.y):
+                    c.set(px, py)
+                for px, py in line(m.src.x + 30, m.y, m.src.x + 30, m.y + 8):
+                    c.set(px, py)
+                for px, py in line(m.src.x + 30, m.y + 8, m.src.x + 8, m.y + 8):
+                    c.set(px, py)
+                style = FILLED if m.kind == 'sync' else OPEN
+                draw_arrowhead(c, m.src.x + 8, m.y + 8, pi, style)
+                if m.label:
+                    c.set_text(m.src.x + 33, m.y + 3, m.label)
+            else:
+                draw_seq_message(c, m.x1, m.x2, m.y, m.kind, m.label)
+        for x in self.destructions:
+            draw_destruction_x(c, x.lifeline.x, x.y)
         # Composite-internal edges (v0.4.0) — after boxes, so they land in
         # the open interior between sibling child boxes.
         for e in self.edges:
@@ -2837,6 +3071,10 @@ class Diagram:
             for px, py in e.waypoints:
                 xs.append(px)
                 ys.append(py)
+        for li in self.lifelines:
+            xs.extend([li.x - li.w / 2, li.x + li.w / 2])
+            ys.extend([li.head_y - 6, li.head_y + li.h,
+                       self._lifeline_tail_end(li)])
 
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
@@ -3001,5 +3239,22 @@ class Diagram:
                 svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 svg_draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+        # ── sequence diagram elements (§7.4–7.7) ──
+        self._update_seq_geometry()
+        for s in self.exec_specs:
+            svg_seq_exec(c, s.lifeline.x, s.y1, s.y2, s.shaded,
+                         width=SEQ_EXEC_W)
+        for li in self.lifelines:
+            svg_seq_head(c, li.x, li.head_y, li.label)
+            c.add_polyline([(li.x, li.tail_start),
+                            (li.x, self._lifeline_tail_end(li))], dashed=True)
+        for m in self.messages:
+            if m.src is m.dst:
+                svg_seq_self_message(c, m.src.x, m.y, m.kind, m.label)
+            else:
+                svg_seq_message(c, m.x1, m.x2, m.y, m.kind, m.label)
+        for x in self.destructions:
+            svg_seq_destruction(c, x.lifeline.x, x.y)
+
         return c.output(width=w, height=h, padding=pad * scale,
                         origin=(min_x * scale, min_y * scale))

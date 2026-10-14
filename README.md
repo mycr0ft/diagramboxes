@@ -326,6 +326,32 @@ d.pkg_conform(view, viewpoint)      # dashed «conform» (§10.7.4)
 Specialized package kinds render folder tabs with their stereotype keyword:
 `«model»`, `«modelLibrary»`, `«profile»`, `«view»`.
 
+### 4b. Sequence diagrams (SysML v1 §7.4–7.7)
+
+Sequence elements are positional: lifelines auto-space their head columns;
+messages anchor at explicit `y` rows (time flows downward). The layout engine
+does not route them.
+
+```python
+d.add_frame('sd', element_kind='interaction', element_name='Initialize MANS')
+fc = d.add_lifeline('fc : Flight Computer')
+mans = d.add_lifeline('mans : MANS')
+
+d.seq_async(fc, mans, y=30, label='measureAltitude')   # solid, open arrow
+d.seq_sync(fc, mans, y=44, label='fireThrusters')       # solid, filled arrow
+d.seq_reply(mans, fc, y=56)                             # dashed, open arrow
+
+driver = d.add_lifeline('mansdd : MANS Device Driver', created=True)
+d.seq_create(fc, driver, label='initializeMANS')        # lands at the head
+d.seq_exec(fc, 44, 60)                                  # thin exec rectangle
+d.destroy(driver)                                       # X at the tail end
+```
+
+Message ends attach to the *edges* of an execution specification when one
+covers the row (§7.7); self-messages draw as a small loop with the name
+beside the arrowhead. Lifelines, messages, exec specs and destruction
+occurrences all round-trip through DI and XMI.
+
 ### 5. Rendering to SVG
 
 ```python
