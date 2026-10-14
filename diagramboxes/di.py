@@ -69,7 +69,7 @@ from diagramboxes.layout import (
     StartNode, DoneNode, TerminateNode, ForkJoinNode, DecisionNode,
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate,
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate,
-    HistoryPseudostate, EntryPoint, ExitPoint, StateNode,
+    HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort,
 )
 
 __all__ = ["to_di", "from_di", "DI_VERSION", "DI_NS", "DC_NS", "DG_NS"]
@@ -123,13 +123,20 @@ def _port_dict(p):
         d[_DD_KIND] = "EntryPoint"
     elif kind == "exit":
         d[_DD_KIND] = "ExitPoint"
+    elif type(p).__name__ == "FramePort":
+        d[_DD_KIND] = "FramePort"
+    ifaces = getattr(p, "interfaces", None)
+    if ifaces:
+        d["interfaces"] = [{"name": i.name, "kind": i.kind}
+                           for i in ifaces]
     return d
 
 
 def _port_from_dict(pd, parent):
     """Rebuild a Port / EntryPoint / ExitPoint from its dict."""
     kind = pd.get(_DD_KIND)
-    cls = {"EntryPoint": EntryPoint, "ExitPoint": ExitPoint}.get(kind, Port)
+    cls = {"EntryPoint": EntryPoint, "ExitPoint": ExitPoint,
+           "FramePort": FramePort}.get(kind, Port) if kind else Port
     if cls is Port:
         p = Port(pd.get("label", ""), side=pd.get("side", "left"),
                  offset=pd.get("offset", 0.5),
@@ -140,6 +147,9 @@ def _port_from_dict(pd, parent):
                 offset=pd.get("offset", 0.5),
                 direction=pd.get("direction"))
     p.parent = parent
+    for idx, idf in enumerate(pd.get("interfaces", [])):
+        p.add_interface(idf.get("name", ""), kind=idf.get("kind", "provided"),
+                        index=idx)
     return p
 
 
@@ -216,6 +226,11 @@ def to_di(diagram):
         ports = getattr(el, "ports", None)
         if ports:
             d["ports"] = [_port_dict(p) for p in ports]
+        standalone = getattr(el, "interfaces", None)
+        if standalone:  # standalone node-level lollipop/socket symbols
+            d["interfaces"] = [{"name": i.name, "kind": i.kind,
+                                "side": i.side, "offset": i.offset}
+                               for i in standalone]
         children = getattr(el, "children", None)
         if children:
             d["ownedElement"] = [shape_dict(c) for c in children]
@@ -273,6 +288,19 @@ def to_di(diagram):
             d["targetPort"] = _port_dict(e.target_port)
         d.update(_edge_style_dict(e))
         out["edges"].append(d)
+
+    if diagram.frame is not None:
+        fr = diagram.frame
+        fd = {"kind": fr.kind}
+        if fr.element_kind:
+            fd["elementKind"] = fr.element_kind
+        if fr.element_name:
+            fd["elementName"] = fr.element_name
+        if fr.diagram_name:
+            fd["diagramName"] = fr.diagram_name
+        if diagram.frame_ports:
+            fd["ports"] = [_port_dict(p) for p in diagram.frame_ports]
+        out["diagramFrame"] = fd
     return out
 
 
@@ -314,6 +342,11 @@ def _shape_from_dict(sd):
     el.x, el.y, el.w, el.h = b
     for pd in sd.get("ports", []):
         el.ports.append(_port_from_dict(pd, el))
+    for idx, idf in enumerate(sd.get("interfaces", [])):
+        if hasattr(el, "add_interface"):
+            el.add_interface(idf.get("name", ""), kind=idf.get("kind", "provided"),
+                             side=idf.get("side", "right"),
+                             offset=idf.get("offset", 0.5), index=idx)
     return el
 
 
@@ -368,7 +401,21 @@ def _shape_xml(sd, indent):
             attrs.append('direction="%s"' % pd["direction"])
         if pd.get(_DD_KIND):
             attrs.append('%s="%s"' % (_DD_KIND, pd[_DD_KIND]))
-        lines.append('%s<port %s/>' % (indent + "  ", " ".join(attrs)))
+        pif = pd.get("interfaces", [])
+        if pif:
+            lines.append('%s<port %s>' % (indent + "  ", " ".join(attrs)))
+            for idf in pif:
+                lines.append('%s  <interface name="%s" kind="%s"/>'
+                             % (indent + "  ", _xml_escape(idf.get("name", "")),
+                                idf.get("kind", "provided")))
+            lines.append('%s</port>' % (indent + "  "))
+        else:
+            lines.append('%s<port %s/>' % (indent + "  ", " ".join(attrs)))
+    for idf in sd.get("interfaces", []):
+        lines.append('%s<interface name="%s" kind="%s" side="%s" offset="%g"/>'
+                     % (indent + "  ", _xml_escape(idf.get("name", "")),
+                        idf.get("kind", "provided"), idf.get("side", "right"),
+                        idf.get("offset", 0.5)))
     for cd in sd.get("ownedElement", []):
         lines.append(_shape_xml(cd, indent + "  "))
     if sd.get("substates"):
@@ -430,9 +477,20 @@ def _parse_shape_element(el):
             pd["direction"] = pe.get("direction")
         if pe.get(_DD_KIND):
             pd[_DD_KIND] = pe.get(_DD_KIND)
+        pif = [{"name": ie.get("name", ""), "kind": ie.get("kind", "provided")}
+               for ie in pe.findall("interface")]
+        if pif:
+            pd["interfaces"] = pif
         ports.append(pd)
     if ports:
         sd["ports"] = ports
+    standalone = [{"name": ie.get("name", ""),
+                   "kind": ie.get("kind", "provided"),
+                   "side": ie.get("side", "right"),
+                   "offset": float(ie.get("offset", 0.5))}
+                  for ie in el.findall("interface")]
+    if standalone:
+        sd["interfaces"] = standalone
     kids = []
     for child in el.findall("ownedElement"):
         kids.append(_parse_shape_element(child))
@@ -517,6 +575,28 @@ def to_di_xmi(payload, name="Diagram"):
             lines.append('      <targetPort %s/>' % " ".join(attrs))
         lines.append('    </di:Edge>')
         out.append("\n".join(lines))
+    fd = payload.get("diagramFrame")
+    if fd:
+        fattrs = ['kind="%s"' % fd.get("kind", "bdd")]
+        for jk, xk in (("elementKind", "elementKind"),
+                       ("elementName", "elementName"),
+                       ("diagramName", "diagramName")):
+            if fd.get(jk):
+                fattrs.append('%s="%s"' % (xk, _xml_escape(fd[jk])))
+        out.append('    <di:DiagramFrame %s>' % " ".join(fattrs))
+        for pd in fd.get("ports", []):
+            pattrs = ['label="%s"' % _xml_escape(pd.get("label", "")),
+                      'side="%s"' % pd.get("side", "left")]
+            if pd.get("offset") is not None:
+                pattrs.append('offset="%g"' % pd["offset"])
+            if pd.get("direction"):
+                pattrs.append('direction="%s"' % pd["direction"])
+            out.append('      <port %s/>' % " ".join(pattrs))
+            for idf in pd.get("interfaces", []):
+                out.append('        <interface name="%s" kind="%s"/>'
+                           % (_xml_escape(idf.get("name", "")),
+                              idf.get("kind", "provided")))
+        out.append('    </di:DiagramFrame>')
     out.append("  </di:Diagram>")
     out.append("</xmi:XMI>")
     return "\n".join(out)
@@ -590,6 +670,27 @@ def from_di(payload):
     for sd in payload.get("ownedElement", []):
         substates_of(sd, by_local[sd["localId"]])
 
+    # Frame + frame ports first: edges may reference them by identity
+    frd = payload.get("diagramFrame")
+    if frd:
+        d.add_frame(frd.get("kind", "bdd"),
+                    element_kind=frd.get("elementKind"),
+                    element_name=frd.get("elementName"),
+                    diagram_name=frd.get("diagramName"))
+        for pd in frd.get("ports", []):
+            d.frame_ports.append(_port_from_dict(pd, None))
+
+    def _edge_port(pd, ref):
+        """Rebuild an edge-anchored port. FramePort references bind to the
+        Diagram's frame_ports instance (single shared object)."""
+        if pd.get(_DD_KIND) == "FramePort":
+            for fp in d.frame_ports:
+                if (fp.label, fp.side, fp.offset) == (
+                        pd.get("label", ""), pd.get("side", "left"),
+                        pd.get("offset", 0.5)):
+                    return fp
+        return _port_from_dict(pd, ref)
+
     # Edges — DI::Edge
     for ed in payload.get("edges", []):
         s = by_local.get(ed.get("source"))
@@ -608,7 +709,7 @@ def from_di(payload):
         e.waypoints = [tuple(w) for w in ed.get("waypoint", [])]
         sp = ed.get("sourcePort")
         if sp:
-            e.source_port = _port_from_dict(sp, s)
+            e.source_port = _edge_port(sp, s)
             s.ports.append(e.source_port)
         tp = ed.get("targetPort")
         if tp:
@@ -718,4 +819,33 @@ def from_di_xmi(xml_text):
             if pos_attr is not None:
                 d["itemPosition"] = float(pos_attr)
         sd["edges"].append(d)
+
+    fr = diagram.find("%sDiagramFrame" % di_tag)
+    if fr is not None:
+        fd: dict = {"kind": str(fr.get("kind", "bdd"))}
+        for xk, jk in (("elementKind", "elementKind"),
+                       ("elementName", "elementName"),
+                       ("diagramName", "diagramName")):
+            if fr.get(xk):
+                fd[jk] = str(fr.get(xk))
+        ports: list = []
+        for pel in fr.findall("port"):
+            pd: dict = {"label": str(pel.get("label", "")),
+                        "side": str(pel.get("side", "left"))}
+            off = pel.get("offset")
+            if off is not None:
+                pd["offset"] = float(off)
+            if pel.get("direction"):
+                pd["direction"] = str(pel.get("direction"))
+            pd[_DD_KIND] = "FramePort"
+            ifaces: list = []
+            for iel in pel.findall("interface"):
+                ifaces.append({"name": str(iel.get("name", "")),
+                               "kind": str(iel.get("kind", "provided"))})
+            if ifaces:
+                pd["interfaces"] = ifaces
+            ports.append(pd)
+        if ports:
+            fd["ports"] = ports
+        sd["diagramFrame"] = fd
     return sd

@@ -9,6 +9,8 @@ Manhattan midpoint (e.g. the trunk caption ``satellite 0..1``).
 and ``target_label`` pinned near each end of the routed path.
 """
 
+import re
+
 from diagramboxes import Diagram, to_di, from_di, to_di_xmi, from_di_xmi
 
 
@@ -68,3 +70,25 @@ def test_di_xmi_round_trip_preserves_end_labels():
     e2 = d2.edges[0]
     assert e2.source_label == 's 1'
     assert e2.target_label == 't 2'
+
+
+def test_end_labels_avoid_collisions_across_parallel_edges():
+    """The Figure 3.1 garble: multiple per-end labels near the same
+    target node must not overprint each other — later labels search
+    clear offsets via the per-render label registry."""
+    d = Diagram()
+    cdhs = d.add_node('CDHS', ['block'])
+    fc = d.add_node('Flight Computer', ['block'])
+    d.add_edge(cdhs, fc, target_label='primaryComputer 1')
+    d.add_edge(cdhs, fc, target_label='backupComputer 1..2')
+    d.add_edge(cdhs, fc, target_label='mod 1')
+    svg = d.render_svg()
+    assert 'primaryComputer 1' in svg
+    assert 'backupComputer 1..2' in svg
+    assert 'mod 1' in svg
+    # the three labels' halo text elements sit at DISTINCT y positions
+    ys = [float(m.group(1)) for m in re.finditer(
+        r'<text[^>]*y="([\d.]+)"[^>]*>(?:primaryComputer 1'
+        r'|backupComputer 1\.\.2|mod 1)</text>', svg)]
+    assert len(ys) == 3
+    assert max(ys) - min(ys) >= 6, f"labels still collide: ys={ys}"

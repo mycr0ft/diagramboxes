@@ -25,17 +25,20 @@ pyelk_layout.py  : pyelk integration (pure-Python ELK port)
 primitives.py    : drawille-based terminal drawing
 svg_canvas.py    : SVG vector drawing
 """
+from math import atan2, cos, sin, pi, radians
 
 from drawille import Canvas
 from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box, draw_port_box, \
     draw_comment_box, draw_view_box, draw_start_node, draw_done_node, draw_terminate_node, \
-    draw_fork_join_node, draw_decision_node, \
+    draw_fork_join_node, draw_decision_node, draw_interface, \
     draw_history_node, draw_entry_exit_point, draw_diagram_frame, \
-    SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, PORT_W, PORT_H
+    SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, PORT_W, PORT_H, \
+    INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
-    svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame
+    svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame, \
+    svg_draw_interface
 
 _MIN_PORT_SPACING = 8
 from collections import defaultdict
@@ -77,8 +80,17 @@ class Port:
         self.offset = offset
         self.direction = direction
         self.label_inside = label_inside  # draw label inside the node (v0.4.0)
+        self.interfaces = []   # lollipop/socket symbols beyond this port
         self.parent = None
         self.x = self.y = 0
+
+    def add_interface(self, name, kind='provided', index=None):
+        """Attach an interface symbol beyond this port (§3.4.1.5)."""
+        if index is None:
+            index = len(self.interfaces)
+        i = InterfaceSymbol(name, kind, side=self.side, parent=self, index=index)
+        self.interfaces.append(i)
+        return i
 
     @property
     def w(self):
@@ -115,6 +127,88 @@ class Port:
         elif self.side == 'bottom':
             self.x = px + int(pw * self.offset) - PORT_W // 2
             self.y = py + ph
+
+
+# ── interface symbols (lollipop / socket, §3.4.1.5) ──
+# geometry constants come from primitives (single source of truth)
+
+
+class FramePort(Port):
+    """A port placed ON the diagram-kind frame's border (SysML v1 §4.8,
+    Figure 4.6): an interaction point on the IBD header block's boundary.
+    Positioned by ``Diagram._place_frame_ports`` once the frame geometry
+    is known after layout; edges to it are routed from `_place_frame_ports`.
+    """
+
+    def __init__(self, label, side='left', offset=0.5, direction=None):
+        super().__init__(label, side=side, offset=offset, direction=direction)
+        self.placed = False
+
+
+class InterfaceSymbol:
+    """UML interface symbol attached outward from a port or node side:
+    ``'provided'`` → ball on a stick (lollipop); ``'required'`` → stick
+    with an open semicircle (socket). The name renders as a label near
+    the symbol (Delligatti §3.4.1.5, Figures 4.5/4.6).
+    """
+
+    def __init__(self, name, kind='provided', side='right', offset=0.5,
+                 parent=None, index=0):
+        self.name = name
+        self.kind = kind
+        self.side = side
+        self.offset = offset        # node-attached: position along the side
+        self.parent = parent
+        self.index = index
+        self.face = (0, 0)          # anchor point on the parent's boundary
+
+    def _stick_len(self):
+        return INT_STICK + self.index * 6
+
+    def _angle(self):
+        a0 = atan2(_OUTWARD[self.side][1], _OUTWARD[self.side][0])
+        return a0 + self.index * radians(40)
+
+    def center(self):
+        ball_off = INT_BALL_R if self.kind == 'provided' else 0
+        L = self._stick_len() + ball_off
+        a = self._angle()
+        return (self.face[0] + cos(a) * L, self.face[1] + sin(a) * L)
+
+    def update_pos(self):
+        p = self.parent
+        if p is None:
+            return
+        if isinstance(p, Port):
+            self.face = {
+                'right': (p.x + PORT_W, p.y + PORT_H // 2),
+                'left': (p.x, p.y + PORT_H // 2),
+                'top': (p.x + PORT_W // 2, p.y),
+                'bottom': (p.x + PORT_W // 2, p.y + PORT_H),
+            }[p.side]
+        else:  # node boundary
+            self.face = {
+                'right': (p.x + p.w, p.y + int(p.h * self.offset)),
+                'left': (p.x, p.y + int(p.h * self.offset)),
+                'top': (p.x + int(p.w * self.offset), p.y),
+                'bottom': (p.x + int(p.w * self.offset), p.y + p.h),
+            }[self.side]
+
+    def extent(self):
+        """Bounding (x1, y1, x2, y2) of the symbol + its name label
+        estimate — consumed by the SVG bounds math."""
+        cx, cy = self.center()
+        r = INT_BALL_R
+        labw = (len(self.name) * 2 + 6) if self.name else 0
+        if self.side == 'right':
+            return (self.face[0], cy - r, cx + r + labw, cy + r)
+        if self.side == 'left':
+            return (cx - r - labw, cy - r, self.face[0], cy + r)
+        if self.side == 'top':
+            return (cx - max(4, labw / 2), cy - r,
+                    cx + max(4, labw / 2), self.face[1])
+        return (cx - max(4, labw / 2), self.face[1],
+                cx + max(4, labw / 2), cy + r + 6)
 
 
 class Node:
@@ -154,6 +248,7 @@ class Node:
         self.stereotypes = stereotypes or []
         self.attributes = attributes or []
         self.compartments = [(t, list(ls)) for t, ls in (compartments or [])]
+        self.interfaces = []   # standalone lollipop/socket symbols (no port)
         self.rounded = rounded
         self.dashed = dashed
         self.ports = []
@@ -193,6 +288,17 @@ class Node:
     def add_attribute(self, text):
         self.attributes.append(text)
         self._calc_size()
+
+    def add_interface(self, name, kind='provided', side='right', offset=0.5,
+                      index=None):
+        """Attach an interface symbol (lollipop/socket) directly to this
+        node's boundary — no port needed (§3.4.1.5)."""
+        if index is None:
+            index = len(self.interfaces)
+        i = InterfaceSymbol(name, kind, side=side, offset=offset,
+                            parent=self, index=index)
+        self.interfaces.append(i)
+        return i
 
     def add_child(self, node):
         """Nest ``node`` inside this node (composite structure, v0.4.0).
@@ -830,6 +936,20 @@ class Diagram:
         self.activities = []
         self.edges = []
         self.frame = None  # optional DiagramFrame (SysML v1 diagram-kind)
+        self.frame_ports = []  # FramePorts straddling the frame border (§4.8)
+
+    def add_frame_port(self, label, side='left', offset=0.5, direction=None):
+        """Create a port on the diagram-kind frame's border (§4.8,
+        Figure 4.6) — an interaction point on the header block's boundary.
+        Positioned and connected during render placement.
+
+        Returns
+        -------
+        FramePort
+        """
+        p = FramePort(label, side=side, offset=offset, direction=direction)
+        self.frame_ports.append(p)
+        return p
 
     def add_frame(self, kind, element_kind=None, element_name=None,
                   diagram_name=None):
@@ -1230,35 +1350,40 @@ class Diagram:
 
     def _update_port_positions(self):
         for n in self.nodes:
-            if not n.ports:
-                continue
+            if n.ports:
+                groups = defaultdict(list)
+                for p in n.ports:
+                    groups[p.side].append(p)
 
-            groups = defaultdict(list)
+                for side, ports in groups.items():
+                    n_ports = len(ports)
+
+                    if n_ports >= 1 and any(p.offset is None for p in ports):
+                        # Auto-distribute all ports on this side with minimum spacing
+                        if side in ('left', 'right'):
+                            px = n.x - PORT_W if side == 'left' else n.x + n.w
+                            total_h = n_ports * PORT_H + (n_ports - 1) * _MIN_PORT_SPACING
+                            start_y = n.y + max(0, (n.h - total_h) // 2)
+                            for i, p in enumerate(ports):
+                                p.x = px
+                                p.y = start_y + i * (PORT_H + _MIN_PORT_SPACING)
+                        else:  # top / bottom
+                            py = n.y - PORT_H if side == 'top' else n.y + n.h
+                            total_w = n_ports * PORT_W + (n_ports - 1) * _MIN_PORT_SPACING
+                            start_x = n.x + max(0, (n.w - total_w) // 2)
+                            for i, p in enumerate(ports):
+                                p.x = start_x + i * (PORT_W + _MIN_PORT_SPACING)
+                                p.y = py
+                    else:
+                        for p in ports:
+                            p.update_pos()
+
+            # interface symbols (port-attached + node-attached)
+            for i in n.interfaces:
+                i.update_pos()
             for p in n.ports:
-                groups[p.side].append(p)
-
-            for side, ports in groups.items():
-                n_ports = len(ports)
-
-                if n_ports >= 1 and any(p.offset is None for p in ports):
-                    # Auto-distribute all ports on this side with minimum spacing
-                    if side in ('left', 'right'):
-                        px = n.x - PORT_W if side == 'left' else n.x + n.w
-                        total_h = n_ports * PORT_H + (n_ports - 1) * _MIN_PORT_SPACING
-                        start_y = n.y + max(0, (n.h - total_h) // 2)
-                        for i, p in enumerate(ports):
-                            p.x = px
-                            p.y = start_y + i * (PORT_H + _MIN_PORT_SPACING)
-                    else:  # top / bottom
-                        py = n.y - PORT_H if side == 'top' else n.y + n.h
-                        total_w = n_ports * PORT_W + (n_ports - 1) * _MIN_PORT_SPACING
-                        start_x = n.x + max(0, (n.w - total_w) // 2)
-                        for i, p in enumerate(ports):
-                            p.x = start_x + i * (PORT_W + _MIN_PORT_SPACING)
-                            p.y = py
-                else:
-                    for p in ports:
-                        p.update_pos()
+                for i in p.interfaces:
+                    i.update_pos()
 
     def add_edge(self, source, target, **kw):
         """Create a new edge and register it with the diagram.
@@ -1809,29 +1934,32 @@ class Diagram:
             cands.append(base)
         return [y for y in cands if y > 0]
 
+    def _frame_port_unplaced(self, e):
+        """True when an edge anchors to a FramePort that rendering has not
+        placed on the frame border yet (its geometry is only known after
+        layout) — such edges are routed by ``_place_frame_ports``."""
+        for p in (e.source_port, e.target_port):
+            if isinstance(p, FramePort) and not getattr(p, 'placed', False):
+                return True
+        return False
+
     def _port_route(self, e):
         """Obstacle-aware port-to-port routing.
 
         Anchors each end at the port's outer face and keeps the final
         segment perpendicular to the target port face.  Candidate routes
         are tried in order and the first that clears all foreign node
-        bodies and port boxes wins:
-
-        1. the direct Z-shape (source leg, horizontal leg, perpendicular
-           approach) — used unchanged whenever it is already clear;
-        2. wrap-around bypasses for side-facing ports: leave the source
-           port, run a horizontal bypass through a free band between or
-           beyond the nodes, and descend (ascend) outside the target box
-           to approach the port from its own side — this is what keeps
-           sugiyama layering from slicing a left/right port edge through
-           intermediate boxes;
-        3. horizontal-leg scans for top/bottom ports (same band logic,
-           shifting the leg y);
-        4. direct L-shaped fallbacks for hook geometries.
-
-        Falls back to the plain Z-shape when nothing clears, preserving
-        the pre-existing behaviour.
+        bodies and port boxes wins: (1) the direct Z-shape; (2) wrap-around
+        bypasses for side-facing ports through a free band; (3) leg-scan
+        shifts for top/bottom ports; (4) direct L-shaped fallbacks for
+        hook geometries.  Falls back to the plain Z-shape when nothing
+        clears.  Edges anchoring unplaced FramePorts are deferred to
+        ``_place_frame_ports`` (the frame geometry exists only after
+        layout).
         """
+        if self._frame_port_unplaced(e):
+            e.frame_pending = True
+            return False
         sp, tp = e.source_port, e.target_port
         if not sp or not tp:
             return False
@@ -1921,7 +2049,12 @@ class Diagram:
         The ported end anchors at its boundary face; the other end lands
         on the facing face centre of the plain node.  Candidates scan
         the band between the nodes, exactly like the two-port router.
+        Edges anchoring unplaced FramePorts are deferred to
+        ``_place_frame_ports``.
         """
+        if self._frame_port_unplaced(e):
+            e.frame_pending = True
+            return False
         if e.source_port and not e.target_port:
             sx, sy = self._port_boundary(e.source_port)
             tx, ty = e.target.cx, e.target.y
@@ -2268,6 +2401,14 @@ class Diagram:
                         ys.append(p.y + p.h + 10)
                     elif p.side == 'top':
                         ys.append(p.y - 10)
+                for i in p.interfaces:
+                    ex1, ey1, ex2, ey2 = i.extent()
+                    xs.extend([ex1, ex2])
+                    ys.extend([ey1, ey2])
+            for i in n.interfaces:
+                ex1, ey1, ex2, ey2 = i.extent()
+                xs.extend([ex1, ex2])
+                ys.extend([ey1, ey2])
         for com in self.comments:
             xs.extend([com.x, com.x + com.w])
             ys.extend([com.y, com.y + com.h])
@@ -2302,11 +2443,48 @@ class Diagram:
         y2 += 4
         return (x1, y1 - DiagramFrame.HEADER_H, x2, y2)
 
+    def _place_frame_ports(self):
+        """Position FramePorts on the frame border (straddling it) and
+        route their edges — called from render/render_svg after layout,
+        because the frame rectangle's geometry is only known then
+        (§4.8, Figure 4.6)."""
+        if not self.frame_ports:
+            return
+        fr = self._frame_rect()
+        if fr is None:
+            return
+        fx1, fy1, fx2, fy2 = fr
+        for p in self.frame_ports:
+            if p.side == 'left':
+                p.x = fx1 - PORT_W // 2
+                p.y = fy1 + int((fy2 - fy1) * p.offset) - PORT_H // 2
+            elif p.side == 'right':
+                p.x = fx2 - PORT_W // 2
+                p.y = fy1 + int((fy2 - fy1) * p.offset) - PORT_H // 2
+            elif p.side == 'top':
+                p.x = fx1 + int((fx2 - fx1) * p.offset) - PORT_W // 2
+                p.y = fy1 - PORT_H // 2
+            else:
+                p.x = fx1 + int((fx2 - fx1) * p.offset) - PORT_W // 2
+                p.y = fy2 - PORT_H // 2
+            p.placed = True
+            for i in p.interfaces:
+                i.update_pos()
+        for e in self.edges:
+            if isinstance(getattr(e, 'source_port', None), FramePort) or \
+                    isinstance(getattr(e, 'target_port', None), FramePort):
+                if e.source_port and e.target_port:
+                    self._port_route(e)
+                else:
+                    self._route_single_port(e)
+                e.frame_pending = False
+
     def render(self, c=None, routing='orthogonal', layer_gap=50, node_gap=12, margin=8):
         if c is None:
             c = Canvas()
         self.layout(routing=routing, layer_gap=layer_gap, node_gap=node_gap, margin=margin)
         self._update_port_positions()
+        self._place_frame_ports()
         used_labels = set()
         all_path_px = set()
         for e in self.edges:
@@ -2382,6 +2560,10 @@ class Diagram:
                     draw_port_box(c, p.x, p.y, p.label, side=p.side,
                                   direction=p.direction,
                                   label_inside=getattr(p, 'label_inside', False))
+                for i in p.interfaces:
+                    draw_interface(c, i)
+            for i in node.interfaces:
+                draw_interface(c, i)
             for ch in node.children:
                 _draw_node_tree(ch)
             for a in self.activities:
@@ -2421,6 +2603,16 @@ class Diagram:
                         draw_port_box(c, p.x, p.y, p.label, side=p.side,
                                   direction=p.direction,
                                   label_inside=getattr(p, 'label_inside', False))
+                    for i in p.interfaces:
+                        draw_interface(c, i)
+                for i in child.interfaces:
+                    draw_interface(c, i)
+        for p in self.frame_ports:
+            draw_port_box(c, p.x, p.y, p.label, side=p.side,
+                          direction=p.direction,
+                          label_inside=getattr(p, 'label_inside', False))
+            for i in p.interfaces:
+                draw_interface(c, i)
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node
@@ -2460,6 +2652,7 @@ class Diagram:
     def render_svg(self, routing='orthogonal', layer_gap=50, node_gap=12, margin=8, scale=1.5):
         self.layout(routing=routing, layer_gap=layer_gap, node_gap=node_gap, margin=margin)
         self._update_port_positions()
+        self._place_frame_ports()
 
         # Compute bounds
         xs = [margin]
@@ -2483,6 +2676,14 @@ class Diagram:
                         ys.append(p.y + p.h + 10)
                     elif p.side == 'top':
                         ys.append(p.y - 10)
+                for i in p.interfaces:
+                    ex1, ey1, ex2, ey2 = i.extent()
+                    xs.extend([ex1, ex2])
+                    ys.extend([ey1, ey2])
+            for i in n.interfaces:
+                ex1, ey1, ex2, ey2 = i.extent()
+                xs.extend([ex1, ex2])
+                ys.extend([ey1, ey2])
         for com in self.comments:
             xs.extend([com.x, com.x + com.w])
             ys.extend([com.y, com.y + com.h])
@@ -2515,6 +2716,7 @@ class Diagram:
 
         # Build keep-away sets for label collision avoidance
         all_path_px = set()
+        svg_used_labels = set()
         for e in self.edges:
             if self._is_visual_containment(e):
                 continue
@@ -2556,6 +2758,10 @@ class Diagram:
                     svg_draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                 else:
                     svg_draw_port(c, p)
+                for i in p.interfaces:
+                    svg_draw_interface(c, i)
+            for i in node.interfaces:
+                svg_draw_interface(c, i)
             for ch in node.children:
                 _svg_node_tree(ch)
             for a in self.activities:
@@ -2591,10 +2797,19 @@ class Diagram:
                         svg_draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
                     else:
                         svg_draw_port(c, p)
+                    for i in p.interfaces:
+                        svg_draw_interface(c, i)
+                for i in child.interfaces:
+                    svg_draw_interface(c, i)
+        for p in self.frame_ports:
+            svg_draw_port(c, p)
+            for i in p.interfaces:
+                svg_draw_interface(c, i)
         for e in self.edges:
             if self._is_visual_containment(e):
                 continue
-            svg_draw_edge(c, e, keep_away=all_path_px - set(e.waypoints))
+            svg_draw_edge(c, e, keep_away=all_path_px - set(e.waypoints),
+                          used_labels=svg_used_labels)
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node

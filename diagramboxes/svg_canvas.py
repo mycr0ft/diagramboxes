@@ -45,7 +45,7 @@ FONT_FAMILY = 'Helvetica, DejaVu Sans, sans-serif'
 from diagramboxes.primitives import SOLID, DASHED, NONE, OPEN, TRIANGLE, DIAMOND, FILLED, \
     DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION, CIRCLE, UNOWNED, ARROW_SIZE, COMMENT_FOLD, \
     ROUNDED_RADIUS, _port_arrow, _arrow_backoff, _node_outward_angle, _class_box_sections, \
-    edge_end_label_positions, route_point_at
+    edge_end_label_positions, route_point_at, clear_label_pos
 
 
 def _arrow_polygon(x, y, angle, style):
@@ -332,7 +332,7 @@ class SvgCanvas:
 
 # ── High-level drawing functions for diagrams ──
 
-def svg_draw_edge(c, e, keep_away=None):
+def svg_draw_edge(c, e, keep_away=None, used_labels=None):
     """Draw an edge (with or without waypoints) onto an SvgCanvas.
     
     keep_away : set of (x, y) tuples — points to avoid for label placement.
@@ -452,15 +452,19 @@ def svg_draw_edge(c, e, keep_away=None):
                             lx, ly = pos
                             break
                     c.add_label(lx, ly, e.label, anchor='middle')
+                    if used_labels is not None:
+                        used_labels.add((lx - len(e.label), ly, len(e.label) * 2))
                     break
                 acc += seg
 
-        # Per-end labels (SysML v1 §3.5)
+        # Per-end labels (SysML v1 §3.5) — collision-aware placement
         spos, tpos = edge_end_label_positions(pts)
         for lab, pos, vert in ((e.source_label, spos, pts[0][0] == pts[1][0]),
                                (e.target_label, tpos, pts[-1][0] == pts[-2][0])):
             if not lab or pos is None:
                 continue
+            pos = clear_label_pos(pos, len(lab), keep_away, used_labels,
+                                  anchor='start' if vert else 'middle')
             c.add_label(pos[0], pos[1], lab,
                         anchor='start' if vert else 'middle')
 
@@ -474,9 +478,13 @@ def svg_draw_edge(c, e, keep_away=None):
                 vx, vy = cos(fangle), sin(fangle)
                 if abs(vx) > 0.7:   # horizontal → label upstream of the arrow
                     lx = fx - vx * (len(e.item_flow) * 2 + 10)
-                    c.add_label(lx, fy, e.item_flow, anchor='middle')
+                    lx, ly = clear_label_pos((lx, fy), len(e.item_flow) * 2,
+                                             keep_away, used_labels, anchor='middle')
+                    c.add_label(lx, ly, e.item_flow, anchor='middle')
                 else:               # vertical → label right of the arrow
-                    c.add_label(fx + 2, fy, e.item_flow, anchor='start')
+                    lx, ly = clear_label_pos((fx + 2, fy), len(e.item_flow) * 2,
+                                             keep_away, used_labels, anchor='start')
+                    c.add_label(lx, ly, e.item_flow, anchor='start')
                 size = ARROW_SIZE
                 hp = fangle + pi / 2
                 hw = size * 0.4
@@ -570,9 +578,13 @@ def svg_draw_edge(c, e, keep_away=None):
                 vx = cos(fangle)
                 if abs(vx) > 0.7:
                     lx = fx - vx * (len(e.item_flow) * 2 + 10)
-                    c.add_label(lx, fy, e.item_flow, anchor='middle')
+                    lx, ly = clear_label_pos((lx, fy), len(e.item_flow) * 2,
+                                             keep_away, used_labels)
+                    c.add_label(lx, ly, e.item_flow, anchor='middle')
                 else:
-                    c.add_label(fx + 2, fy, e.item_flow, anchor='start')
+                    lx, ly = clear_label_pos((fx + 2, fy), len(e.item_flow) * 2,
+                                             keep_away, used_labels)
+                    c.add_label(lx, ly, e.item_flow, anchor='start')
                 size = ARROW_SIZE
                 hp = fangle + pi / 2
                 hw = size * 0.4
@@ -683,6 +695,36 @@ def svg_draw_frame(c, x1, y1, x2, y2, header):
         c.add_polygon(pts, fill='white')
         c.add_text(x1 + 3, y1 + 7, header, anchor='start')
         c.close_group()
+
+
+def svg_draw_interface(c, iface):
+    """UML interface symbol in SVG (§3.4.1.5): provided = stick + filled
+    ball (lollipop); required = stick + open semicircle (socket, drawn as
+    a class="arc" polyline); name as a halo label near the symbol."""
+    sx, sy = iface.face
+    OUT = {'right': (1, 0), 'left': (-1, 0), 'top': (0, -1), 'bottom': (0, 1)}
+    dx, dy = OUT[iface.side]
+    cx, cy = iface.center()
+    c.add_line(sx, sy, cx, cy)
+    r = 3
+    if iface.kind == 'provided':
+        c.add_circle(cx, cy, r, fill='black')
+    else:
+        px, py = -dy, dx
+        pts = [(cx + dx * cos(a) * r + px * sin(a) * r,
+                cy + dy * cos(a) * r + py * sin(a) * r)
+               for a in (-pi / 2 + t / 8 * pi for t in range(9))]
+        pts_svg = ' '.join('%.1f,%.1f' % (c.s(x), c.s(y)) for x, y in pts)
+        c.elements.append(
+            '<polyline class="arc" points="%s" stroke="%s"'
+            ' stroke-width="%s" fill="none" />'
+            % (pts_svg, c.STROKE, c.stroke_width))
+    if iface.name:
+        if dx:
+            nx = cx + dx * (r + 2)
+            c.add_label(nx, cy, iface.name, anchor='start')
+        else:
+            c.add_label(cx + 2, cy - dy * (r + 4), iface.name, anchor='start')
 
 
 def svg_draw_comment(c, com):

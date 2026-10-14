@@ -531,22 +531,45 @@ def draw_polyline(c, points, line_style=SOLID, source=None, target=None, label=N
                                     for p in keep_away)
                     if not label_coll and not path_coll:
                         lx, ly = pos
-                        used_labels.add(pos)
+                        used_labels.add((pos[0], pos[1], len(label) * 2))
                         break
                 else:
-                    used_labels.add((lx, ly))
+                    used_labels.add((lx, ly, len(label) * 2))
             c.set_text(lx, ly, label)
     if (source_label or target_label) and len(points) >= 2:
         spos, tpos = edge_end_label_positions(list(points))
+        _end_offsets = [(0, 0), (0, -8), (0, 8), (10, 0), (-10, 0), (0, 16),
+                        (0, -16), (-18, 0), (18, 0), (0, 24)]
         pairs = ((source_label, spos, points[0][0] == points[1][0]),
                  (target_label, tpos, points[-1][0] == points[-2][0]))
         for lab, pos, vert in pairs:
             if not lab or pos is None:
                 continue
+            lx, ly = pos
+            w2 = len(lab) * 2
+            xl = lx if vert else lx - w2 // 2
+            if used_labels is not None or keep_away:
+                for ox, oy in _end_offsets:
+                    p2 = (lx + ox, ly + oy)
+                    p2l = p2[0] if vert else p2[0] - w2 // 2
+                    lcoll = any(not (p2l + w2 < q[0] - 2 or p2l > q[0] + q[2] + 2)
+                                and abs(p2[1] - q[1]) < 5
+                                for q in (used_labels or ()))
+                    pcoll = any(abs(p2[0] - q[0]) < 12 and abs(p2[1] - q[1]) < 12
+                                for q in (keep_away or ()))
+                    if not lcoll and not pcoll:
+                        lx, ly = p2
+                        xl = p2l
+                        if used_labels is not None:
+                            used_labels.add((xl, ly, w2))
+                        break
+                else:
+                    if used_labels is not None:
+                        used_labels.add((xl, ly, w2))
             if vert:
-                c.set_text(pos[0] + 2, pos[1], lab)
+                c.set_text(lx + 2, ly, lab)
             else:
-                c.set_text(pos[0] - len(lab) // 2, pos[1], lab)
+                c.set_text(lx - len(lab) // 2, ly, lab)
     if item_flow and len(points) >= 2:
         r = route_point_at(list(points), item_position)
         if r:
@@ -560,7 +583,32 @@ def draw_polyline(c, points, line_style=SOLID, source=None, target=None, label=N
                 c.set_text(int(fx + 2), int(fy), item_flow)
 
 
-# ── port box ──
+# ── shared label placement ──
+
+def clear_label_pos(pos, w_units, keep_away=None, used_labels=None, anchor='middle'):
+    """Collision-aware label placement: try small offsets until ``pos``
+    is clear of other edges' paths (``keep_away``) and of already-placed
+    labels. ``used_labels`` holds (x_left, y, width) spans and registers
+    the winning position. Figure 3.1 review: parallel edges' end labels
+    must not overprint."""
+    offsets = [(0, 0), (0, -8), (0, 8), (10, 0), (-10, 0),
+               (0, 16), (0, -16), (-18, 0), (18, 0), (0, 24)]
+    for ox, oy in offsets:
+        p2 = (pos[0] + ox, pos[1] + oy)
+        if any(abs(p2[0] - q[0]) < 14 and abs(p2[1] - q[1]) < 6
+               for q in (keep_away or ())):
+            continue
+        x_left = p2[0] - (w_units / 2 if anchor == 'middle' else 0)
+        if any(not (x_left + w_units < q[0] - 2 or x_left > q[0] + q[2] + 2)
+               and abs(p2[1] - q[1]) < 6 for q in (used_labels or ())):
+            continue
+        if used_labels is not None:
+            used_labels.add((x_left, p2[1], w_units))
+        return p2
+    return pos
+
+
+# ── ports / port box ──
 
 PORT_W = 8
 PORT_H = 12
@@ -849,6 +897,52 @@ def _class_box_sections(stereotypes, name, attributes, compartments):
         for l in lines:
             sections.append(('text', l))
     return sections
+
+
+# ── interface symbols (lollipop / socket, §3.4.1.5) ──
+
+INT_STICK = 8        # stick length from the anchor face
+INT_BALL_R = 3       # provided-interface ball radius
+INT_STACK = 24       # radial spacing between stacked interfaces (must fit
+                     # a braille text row + symbol; 16 collides labels)
+
+_OUTWARD = {'right': (1, 0), 'left': (-1, 0), 'top': (0, -1), 'bottom': (0, 1)}
+
+
+def draw_interface(c, iface):
+    """Draw a UML interface symbol beyond its anchor face (§3.4.1.5):
+    provided = stick + filled ball (lollipop); required = stick + open
+    semicircle (socket); name label floats beyond the symbol."""
+    sx, sy = iface.face
+    dx, dy = _OUTWARD[iface.side]
+    cx, cy = iface.center()
+    draw_line(c, sx, sy, int(cx), int(cy), SOLID)
+    r = INT_BALL_R
+    if iface.kind == 'provided':
+        for ox in range(-r, r + 1):
+            for oy in range(-r, r + 1):
+                if ox * ox + oy * oy <= r * r:
+                    c.set(int(cx) + ox, int(cy) + oy)
+    else:
+        # open semicircle bulging outward: center + axis*cos(a)*r +
+        # perp*sin(a)*r, a in [-pi/2, pi/2] (flat side toward the node)
+        px, py = -dy, dx
+        prev = None
+        for t in range(9):
+            a = -pi / 2 + t / 8 * pi
+            ex = int(cx + dx * (cos(a) * r) + px * (sin(a) * r))
+            ey = int(cy + dy * (cos(a) * r) + py * (sin(a) * r))
+            if prev is not None:
+                draw_line(c, prev[0], prev[1], ex, ey, SOLID)
+            prev = (ex, ey)
+    if iface.name:
+        if dx:      # left/right stick: label beyond the symbol on the axis
+            tx = int(cx + dx * (r + 2))
+            if dx < 0:
+                tx -= len(iface.name)
+            c.set_text(max(0, tx), int(cy) - 2, iface.name)
+        else:       # top/bottom stick: label beside the symbol
+            c.set_text(int(cx) + 2, int(cy - dy * (r + 4)), iface.name)
 
 
 def draw_diagram_frame(c, x1, y1, x2, y2, header):

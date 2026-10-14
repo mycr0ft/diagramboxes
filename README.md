@@ -263,6 +263,41 @@ port = node.add_port('out', side='right', offset=0.25)  # 25% from top
 Port-to-port edges use Z-shaped (3-segment) routing with a perpendicular
 docking segment into the target port face.
 
+#### Interface symbols on ports (SysML v1 §3.4.1.5)
+
+Standard ports can carry *provided* (lollipop) or *required* (socket)
+interfaces — the ball-and-socket notation. Symbols fan out with increasing
+stick length per index so stacked interfaces stay readable:
+
+```python
+sp = eps.add_port('pow', side='left')
+sp.add_interface('Power Generation', kind='provided')   # lollipop
+sp.add_interface('Status Reporting', kind='required')   # socket
+```
+
+Interfaces serialize through DI (`interfaces` on the port payload) and XMI
+(nested `<interface name kind>` elements). Entry/exit points
+(`EntryPoint`/`ExitPoint`) render as the half-arrow state-machine boundary
+notation.
+
+#### Frame ports (SysML v1 §4.8)
+
+A port can sit ON the diagram-kind frame itself, representing an interaction
+point on the header block's boundary (e.g. the satellite's solar panels
+reaching the external environment):
+
+```python
+d.add_frame('ibd', element_kind='block',
+            element_name='DellSat-77 Satellite', diagram_name='Services View')
+fp = d.add_frame_port('solarPanel', side='left', offset=0.3)
+fp.add_interface('Light Source', kind='required')
+d.add_edge(fp, eps_part, source_port=fp, target_style=OPEN)
+```
+
+Frame ports are positioned straddling the frame border once layout settles,
+and their edges route in a second pass. Both renderers draw them; DI and XMI
+round-trip the frame and its ports.
+
 ### 5. Rendering to SVG
 
 ```python

@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Tests for frame ports (SysML v1, Delligatti §4.8, Figure 4.6): ports
+placed on the diagram-kind frame's border (the IBD header block's
+boundary), possibly carrying interface symbols, and connected to
+internal parts. Also covers DI/XMI round-trip of the frame itself.
+"""
+
+import re
+
+from diagramboxes import (Diagram, Port, OPEN, to_di, from_di, to_di_xmi,
+                          from_di_xmi, PORT_W)
+
+
+def _framed():
+    d = Diagram()
+    d.add_frame('ibd', element_kind='block',
+                element_name='DellSat-77 Satellite',
+                diagram_name='Services View')
+    eps = d.add_node('eps : Electrical Power Subsystem')
+    fp = d.add_frame_port('solarPanel', side='left', offset=0.5)
+    fp.add_interface('Light Source', kind='required')
+    return d, eps, fp
+
+
+def test_frame_port_straddles_frame_border():
+    d, eps, fp = _framed()
+    d.layout(routing='orthogonal')
+    d._place_frame_ports()
+    x1, y1, x2, y2 = d._frame_rect()
+    # frame port half in, half out of the border (straddles)
+    assert abs(fp.x + PORT_W // 2 - x1) < 2
+    assert y1 < fp.y < y2, "frame port sits along the frame side"
+
+
+def test_edge_from_frame_port_to_internal_part():
+    d = Diagram()
+    d.add_frame('ibd', element_kind='block',
+                element_name='DellSat-77 Satellite', diagram_name='Services View')
+    eps = d.add_node('eps : Electrical Power Subsystem')
+    fp = d.add_frame_port('solarPanel', side='left', offset=0.5)
+    d.add_edge(eps, eps, source_port=fp, target_style=OPEN)
+    d.render(routing='orthogonal')   # braille smoke: routes after placement
+    svg = d.render_svg(routing='orthogonal')
+    assert 'solarPanel' in svg
+    assert svg.count('<polyline') >= 1, "frame-port edge connects after placement"
+
+
+def test_frame_port_with_interface_renders():
+    d, eps, fp = _framed()
+    svg = d.render_svg(routing='orthogonal')
+    assert 'Light Source' in svg
+    assert re.search(r'<polyline[^>]*class="arc"[^>]*/>', svg), \
+        "required-interface socket on the frame port"
+
+
+def test_frame_and_frame_ports_survive_di_round_trip():
+    d, eps, fp = _framed()
+    d2 = from_di(to_di(d))
+    assert d2.frame is not None
+    assert d2.frame.kind == 'ibd'
+    assert d2.frame.element_name == 'DellSat-77 Satellite'
+    assert len(d2.frame_ports) == 1
+    fp2 = d2.frame_ports[0]
+    assert fp2.label == 'solarPanel'
+    assert [(i.name, i.kind) for i in fp2.interfaces] == \
+        [('Light Source', 'required')]
+
+
+def test_frame_survives_xmi_round_trip():
+    d, eps, fp = _framed()
+    d2 = from_di(from_di_xmi(to_di_xmi(to_di(d))))
+    assert d2.frame is not None
+    assert d2.frame.kind == 'ibd'
+    assert len(d2.frame_ports) == 1
