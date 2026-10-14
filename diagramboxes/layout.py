@@ -32,8 +32,8 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_comment_box, draw_view_box, draw_start_node, draw_done_node, draw_terminate_node, \
     draw_fork_join_node, draw_decision_node, draw_interface, \
     draw_history_node, draw_entry_exit_point, draw_diagram_frame, \
-    SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, PORT_W, PORT_H, \
-    INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD
+    SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, CIRCLED_PLUS, PORT_W, PORT_H, \
+    INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD, _is_folder
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
@@ -950,6 +950,80 @@ class Diagram:
         p = FramePort(label, side=side, offset=offset, direction=direction)
         self.frame_ports.append(p)
         return p
+
+    def add_requirement(self, name, req_id='', text='', extra_stereotypes=None):
+        """Create a «requirement» node (§11.4): the stereotype keyword
+        preceding the name plus the two String properties ``id`` and
+        ``text`` shown as named compartments.
+
+        Returns
+        -------
+        Node
+        """
+        st = ['requirement'] + list(extra_stereotypes or [])
+        comps = []
+        if req_id:
+            comps.append(('id', [req_id]))
+        if text:
+            comps.append(('text', [text]))
+        return self.add_node(name, st, compartments=comps)
+
+    def _req_edge(self, client, supplier, keyword):
+        """Dependency notation (dashed line, open arrowhead) with the
+        relationship keyword as the stereotype label (§11.5)."""
+        return self.add_edge(client, supplier, line_style=DASHED,
+                             target_style=OPEN, label='«%s»' % keyword)
+
+    def req_trace(self, client, supplier):
+        """«trace»: modification to the supplier may require modifying
+        the client (§11.5)."""
+        return self._req_edge(client, supplier, 'trace')
+
+    def req_derive(self, client, supplier):
+        """«deriveReqt»: the client requirement is derived from the
+        supplier requirement (§11.5)."""
+        return self._req_edge(client, supplier, 'deriveReqt')
+
+    def req_refine(self, client, supplier):
+        """«refine»: the client element is more concrete than the
+        supplier (§11.5)."""
+        return self._req_edge(client, supplier, 'refine')
+
+    def req_satisfy(self, client, supplier):
+        """«satisfy»: an instance of the client block will fulfill the
+        supplier requirement — an assertion, not proof (§11.5)."""
+        return self._req_edge(client, supplier, 'satisfy')
+
+    def req_verify(self, client, supplier):
+        """«verify»: executing the client test case proves the supplier
+        requirement is satisfied (§11.5)."""
+        return self._req_edge(client, supplier, 'verify')
+
+    def add_package(self, name, stereotypes=None):
+        """Create a package node — folder symbol with the tab (§10.4);
+        specialized kinds pass their keyword in ``stereotypes`` (e.g.
+        ``['modelLibrary']``, ``['view']``)."""
+        st = ['package'] + list(stereotypes or [])
+        return self.add_node(name, st)
+
+    def pkg_contain(self, namespace, contained):
+        """Crosshair namespace containment (§10.4): a solid line with a
+        circled plus on the *namespace* end; the contained element is at
+        the other end."""
+        return self.add_edge(namespace, contained, line_style=SOLID,
+                             source_style=CIRCLED_PLUS)
+
+    def pkg_import(self, client, supplier):
+        """Package import relationship (§10.6): dashed line, open
+        arrowhead, «import» keyword near the line."""
+        return self.add_edge(client, supplier, line_style=DASHED,
+                             target_style=OPEN, label='«import»')
+
+    def pkg_conform(self, view, viewpoint):
+        """«conform» special dependency from the view to its viewpoint
+        (§10.7.4)."""
+        return self.add_edge(view, viewpoint, line_style=DASHED,
+                             target_style=OPEN, label='«conform»')
 
     def add_frame(self, kind, element_kind=None, element_name=None,
                   diagram_name=None):
@@ -2552,7 +2626,8 @@ class Diagram:
             draw_class_box(c, node.x, node.y, node.x + node.w, node.y + node.h,
                            node.name, node.stereotypes, node.attributes,
                            rounded=node.rounded, dashed=node.dashed,
-                           compartments=getattr(node, 'compartments', None))
+                           compartments=getattr(node, 'compartments', None),
+                           folder=_is_folder(node.stereotypes))
             for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
@@ -2595,7 +2670,8 @@ class Diagram:
             for child in v.children:
                 draw_class_box(c, child.x, child.y, child.x + child.w, child.y + child.h,
                                child.name, child.stereotypes, child.attributes, rounded=child.rounded, dashed=child.dashed,
-                               compartments=getattr(child, 'compartments', None))
+                               compartments=getattr(child, 'compartments', None),
+                               folder=_is_folder(child.stereotypes))
                 for p in child.ports:
                     if isinstance(p, (EntryPoint, ExitPoint)):
                         draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))

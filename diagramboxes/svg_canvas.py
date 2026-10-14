@@ -45,13 +45,14 @@ FONT_FAMILY = 'Helvetica, DejaVu Sans, sans-serif'
 from diagramboxes.primitives import SOLID, DASHED, NONE, OPEN, TRIANGLE, DIAMOND, FILLED, \
     DEFINITION, REDEFINITION, REFERENCE_SUBSETTING, PORTION, CIRCLE, UNOWNED, ARROW_SIZE, COMMENT_FOLD, \
     ROUNDED_RADIUS, _port_arrow, _arrow_backoff, _node_outward_angle, _class_box_sections, \
-    edge_end_label_positions, route_point_at, clear_label_pos
+    edge_end_label_positions, route_point_at, clear_label_pos, \
+    CIRCLED_PLUS, FOLDER_KINDS, _is_folder
 
 
 def _arrow_polygon(x, y, angle, style):
     """Return polygon/fill for an arrowhead, or (lines, None) for OPEN."""
-    if style == NONE or style is None or style in (PORTION, CIRCLE, UNOWNED):
-        return None, style if style in (PORTION, CIRCLE, UNOWNED) else None
+    if style == NONE or style is None or style in (PORTION, CIRCLE, UNOWNED, CIRCLED_PLUS):
+        return None, style if style in (PORTION, CIRCLE, UNOWNED, CIRCLED_PLUS) else None
     size = ARROW_SIZE
     if style == OPEN:
         lines = []
@@ -110,6 +111,19 @@ def _svg_draw_circle(c, x, y, angle):
         a = angle + sign * pi / 4
         c.add_line(cx, cy, cx + cos(a) * h, cy + sin(a) * h)
         c.add_line(cx, cy, cx + cos(a + pi) * h, cy + sin(a + pi) * h)
+
+
+def _svg_draw_circled_plus(c, x, y, angle):
+    """Crosshair namespace containment (SysML v1 §10.4): circled plus on
+    the namespace end of a solid containment line."""
+    r = max(3, ARROW_SIZE * 0.5)
+    cx = x - cos(angle) * r
+    cy = y - sin(angle) * r
+    c.add_group({'class': 'crosshair'})
+    c.add_circle(cx, cy, r, fill='none')
+    c.add_line(cx - r, cy, cx + r, cy)
+    c.add_line(cx, cy - r, cx, cy + r)
+    c.close_group()
 
 
 def _svg_draw_unowned(c, x, y, angle):
@@ -370,7 +384,7 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
             dy = pts[-1][1] - pts[-2][1]
             angle = atan2(dy, dx)
             target_angle = angle
-            if e.target_style in (CIRCLE, UNOWNED):
+            if e.target_style in (CIRCLE, UNOWNED, CIRCLED_PLUS):
                 node_angle = _node_outward_angle(pts[-1][0], pts[-1][1], e.target)
                 if node_angle is not None:
                     target_angle = node_angle
@@ -379,6 +393,8 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                 _svg_draw_circle(c, pts[-1][0], pts[-1][1], target_angle)
             elif fill == UNOWNED:
                 _svg_draw_unowned(c, pts[-1][0], pts[-1][1], target_angle)
+            elif fill == CIRCLED_PLUS:
+                _svg_draw_circled_plus(c, pts[-1][0], pts[-1][1], target_angle)
             elif fill == PORTION:
                 _svg_draw_portion(c, pts[-1][0], pts[-1][1], target_angle)
             elif poly:
@@ -396,7 +412,7 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
             dy = pts[1][1] - pts[0][1]
             angle = atan2(dy, dx)
             source_angle = angle + pi
-            if e.source_style in (CIRCLE, UNOWNED):
+            if e.source_style in (CIRCLE, UNOWNED, CIRCLED_PLUS):
                 node_angle = _node_outward_angle(pts[0][0], pts[0][1], e.source)
                 if node_angle is not None:
                     source_angle = node_angle
@@ -405,6 +421,8 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                 _svg_draw_circle(c, pts[0][0], pts[0][1], source_angle)
             elif fill == UNOWNED:
                 _svg_draw_unowned(c, pts[0][0], pts[0][1], source_angle)
+            elif fill == CIRCLED_PLUS:
+                _svg_draw_circled_plus(c, pts[0][0], pts[0][1], source_angle)
             elif fill == PORTION:
                 _svg_draw_portion(c, pts[0][0], pts[0][1], source_angle)
             elif poly:
@@ -520,7 +538,7 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
 
         angle = atan2(ty - sy, tx - sx)
         target_angle = angle
-        if e.target_style in (CIRCLE, UNOWNED):
+        if e.target_style in (CIRCLE, UNOWNED, CIRCLED_PLUS):
             node_angle = _node_outward_angle(tx, ty, e.target)
             if node_angle is not None:
                 target_angle = node_angle
@@ -529,6 +547,8 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
             _svg_draw_circle(c, tx, ty, target_angle)
         elif fill == UNOWNED:
             _svg_draw_unowned(c, tx, ty, target_angle)
+        elif fill == CIRCLED_PLUS:
+            _svg_draw_circled_plus(c, tx, ty, target_angle)
         elif fill == PORTION:
             _svg_draw_portion(c, tx, ty, target_angle)
         elif poly:
@@ -537,7 +557,7 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
         if fill in (DEFINITION, REDEFINITION, REFERENCE_SUBSETTING):
             _svg_arrow_extras(c, tx, ty, target_angle, fill)
         source_angle = angle + pi
-        if e.source_style in (CIRCLE, UNOWNED):
+        if e.source_style in (CIRCLE, UNOWNED, CIRCLED_PLUS):
             node_angle = _node_outward_angle(sx, sy, e.source)
             if node_angle is not None:
                 source_angle = node_angle
@@ -546,6 +566,8 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
             _svg_draw_circle(c, sx, sy, source_angle)
         elif fill == UNOWNED:
             _svg_draw_unowned(c, sx, sy, source_angle)
+        elif fill == CIRCLED_PLUS:
+            _svg_draw_circled_plus(c, sx, sy, source_angle)
         elif fill == PORTION:
             _svg_draw_portion(c, sx, sy, source_angle)
         elif poly:
@@ -659,6 +681,12 @@ def svg_draw_node(c, n):
     if n.dashed:
         kw['dashed'] = True
     c.add_rect(n.x, n.y, n.w, n.h, **kw)
+    if _is_folder(getattr(n, 'stereotypes', None)):
+        # Package folder tab (§10.4): rectangle on the upper-left side
+        tw = min(10, n.w // 4) if n.w > 26 else max(4, n.w // 4)
+        c.add_group({'class': 'pkg-tab'})
+        c.add_polyline([(n.x, n.y - 3), (n.x + tw, n.y - 3), (n.x + tw, n.y)])
+        c.close_group()
     box_cx = n.x + n.w // 2
     sections = _class_box_sections(getattr(n, 'stereotypes', None), n.name,
                                    getattr(n, 'attributes', None),

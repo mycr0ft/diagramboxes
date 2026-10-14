@@ -34,8 +34,16 @@ REFERENCE_SUBSETTING = 'reference_subsetting'
 PORTION = 'portion'
 CIRCLE = 'circle'
 UNOWNED = 'unowned'
+CIRCLED_PLUS = 'circled_plus'
 SOLID = 'solid'
 DASHED = 'dashed'
+
+# Package-symbol kinds (SysML v1 §10): folder symbol with the tab
+FOLDER_KINDS = ('package', 'model', 'modelLibrary', 'profile', 'view')
+
+
+def _is_folder(stereotypes):
+    return any(k in FOLDER_KINDS for k in (stereotypes or ()))
 
 ARROW_SIZE = 7
 
@@ -44,7 +52,7 @@ def _arrow_backoff(style):
     """Pixels to shorten the edge line so it stops at the arrowhead base."""
     if style is None or style == NONE or style == FILLED:
         return 0
-    if style == CIRCLE or style == UNOWNED:
+    if style == CIRCLE or style == UNOWNED or style == CIRCLED_PLUS:
         # The circle sits tangent to the node boundary (see _draw_circle),
         # so the limb — not the centre — touches the border.  The edge line
         # therefore should reach the boundary: no backoff is needed.
@@ -197,6 +205,23 @@ def _draw_circle(c, x, y, angle, size):
             c.set(px, py)
 
 
+def _draw_circled_plus(c, x, y, angle, size):
+    """Crosshair namespace containment (SysML v1 §10.4): a circled plus
+    on the namespace end of a solid containment line."""
+    r = max(3, round(size * 0.5))
+    cx = round(x - cos(angle) * r)
+    cy = round(y - sin(angle) * r)
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            d = round((dx*dx + dy*dy) ** 0.5)
+            if d == r:
+                c.set(cx + dx, cy + dy)
+    for px, py in line(cx - r, cy, cx + r, cy):
+        c.set(px, py)
+    for px, py in line(cx, cy - r, cx, cy + r):
+        c.set(px, py)
+
+
 def _draw_unowned(c, x, y, angle, size):
     """Open circle (no cross) — unowned membership."""
     r = max(3, round(size * 0.5))
@@ -235,6 +260,7 @@ _ARROW_DRAWERS = {
     PORTION: _draw_portion,
     CIRCLE: _draw_circle,
     UNOWNED: _draw_unowned,
+    CIRCLED_PLUS: _draw_circled_plus,
 }
 
 
@@ -350,11 +376,11 @@ def draw_relation(c, x1, y1, x2, y2, line_style=SOLID, source=None, target=None,
     # the rest of the arrowheads point along the edge axis.
     target_angle = angle
     source_angle = angle + pi
-    if target in (CIRCLE, UNOWNED):
+    if target in (CIRCLE, UNOWNED, CIRCLED_PLUS):
         node_angle = _node_outward_angle(x2, y2, target_node)
         if node_angle is not None:
             target_angle = node_angle
-    if source in (CIRCLE, UNOWNED):
+    if source in (CIRCLE, UNOWNED, CIRCLED_PLUS):
         node_angle = _node_outward_angle(x1, y1, source_node)
         if node_angle is not None:
             source_angle = node_angle
@@ -470,7 +496,7 @@ def draw_polyline(c, points, line_style=SOLID, source=None, target=None, label=N
         dx = points[-1][0] - points[-2][0]
         dy = points[-1][1] - points[-2][1]
         target_angle = atan2(dy, dx)
-        if target in (CIRCLE, UNOWNED):
+        if target in (CIRCLE, UNOWNED, CIRCLED_PLUS):
             node_angle = _node_outward_angle(points[-1][0], points[-1][1], target_node)
             if node_angle is not None:
                 target_angle = node_angle
@@ -481,7 +507,7 @@ def draw_polyline(c, points, line_style=SOLID, source=None, target=None, label=N
         dx = points[1][0] - points[0][0]
         dy = points[1][1] - points[0][1]
         source_angle = atan2(dy, dx) + pi
-        if source in (CIRCLE, UNOWNED):
+        if source in (CIRCLE, UNOWNED, CIRCLED_PLUS):
             node_angle = _node_outward_angle(points[0][0], points[0][1], source_node)
             if node_angle is not None:
                 source_angle = node_angle
@@ -955,7 +981,7 @@ def draw_diagram_frame(c, x1, y1, x2, y2, header):
     c.set_text(x1 + 3, y1 + 4, header)
 
 
-def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, rounded=False, dashed=False, compartments=None):
+def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, rounded=False, dashed=False, compartments=None, folder=False):
     """Draw a rectangular classifier box with centered text.
 
     The box has four borders. Inside it renders (top to bottom):
@@ -977,6 +1003,8 @@ def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, r
         Draw rounded corners (e.g. SysMLv2 part usages).
     dashed : bool, optional
         Draw border with dashed lines.
+    folder : bool, optional
+        Draw the package folder tab on the upper-left side (§10.4).
     """
     dl = _draw_dashed_line if dashed else None
     if rounded:
@@ -1013,6 +1041,14 @@ def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, r
             for rx, ry in line(x2, y2, x1, y2): c.set(rx, ry)
             for rx, ry in line(x1, y2, x1, y1): c.set(rx, ry)
     box_cx = (x1 + x2) // 2
+    if folder:
+        # Package folder tab (§10.4): short horizontal cap rising 2 px
+        # above the upper-left border corner, closed by a vertical stub.
+        tw = min(10, (x2 - x1) // 4) if x2 > x1 + 16 else max(4, (x2 - x1) // 4)
+        for px, py in line(x1, y1 - 2, x1 + tw, y1 - 2):
+            c.set(px, py)
+        for px, py in line(x1, y1 - 2, x1, y1):
+            c.set(px, py)
     for i, (kind, txt) in enumerate(_class_box_sections(
             stereotypes, name, attributes, compartments)):
         y = y1 + 4 + i * 5

@@ -281,7 +281,6 @@ Interfaces serialize through DI (`interfaces` on the port payload) and XMI
 notation.
 
 #### Frame ports (SysML v1 §4.8)
-
 A port can sit ON the diagram-kind frame itself, representing an interaction
 point on the header block's boundary (e.g. the satellite's solar panels
 reaching the external environment):
@@ -297,6 +296,35 @@ d.add_edge(fp, eps_part, source_port=fp, target_style=OPEN)
 Frame ports are positioned straddling the frame border once layout settles,
 and their edges route in a second pass. Both renderers draw them; DI and XMI
 round-trip the frame and its ports.
+
+#### Requirements notation (SysML v1 §11)
+
+```python
+req = d.add_requirement('Hohmann Transfer', req_id='R-HT',
+                        text='The satellite shall...')   # «requirement» + id/text compartments
+
+d.req_derive(derived_req, req)      # «deriveReqt» dashed dependency
+d.req_trace(a, b)                   # «trace»
+d.req_refine(a, b)                  # «refine»
+d.req_satisfy(block, req)           # «satisfy»
+d.req_verify(test_case, req)        # «verify»
+```
+
+Every relationship is the SysML dependency notation: dashed line with an
+open arrowhead, the stereotype keyword at the midline.
+
+#### Package notation (SysML v1 §10)
+
+```python
+pkg = d.add_package('Domain')                       # folder symbol with the tab
+lib = d.add_package('Libraries', stereotypes=['modelLibrary'])  # «modelLibrary»
+d.pkg_contain(pkg, contained)       # crosshair: circled plus on the namespace end
+d.pkg_import(client, supplier)      # dashed «import»
+d.pkg_conform(view, viewpoint)      # dashed «conform» (§10.7.4)
+```
+
+Specialized package kinds render folder tabs with their stereotype keyword:
+`«model»`, `«modelLibrary»`, `«profile»`, `«view»`.
 
 ### 5. Rendering to SVG
 
