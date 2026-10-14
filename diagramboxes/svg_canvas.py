@@ -319,8 +319,14 @@ class SvgCanvas:
     def close_group(self):
         self.elements.append('</g>')
 
-    def output(self, width=None, height=None, padding=10):
-        """Return SVG string. Bounds auto-computed if not provided."""
+    def output(self, width=None, height=None, padding=10.0, origin=(0.0, 0.0)):
+        """Return SVG string. Bounds auto-computed if not provided.
+
+        ``origin`` is the (x, y) of the content's top-left in output
+        units; the viewBox is anchored one ``padding`` beyond it so
+        content at negative coordinates is never clipped.
+        """
+        ox, oy = origin
         if width is not None and height is not None:
             w, h = width, height
         else:
@@ -337,7 +343,7 @@ class SvgCanvas:
 
         header = (
             f'<svg xmlns="http://www.w3.org/2000/svg"'
-            f' viewBox="{-padding} {-padding} {w + padding * 2} {h + padding * 2}"'
+            f' viewBox="{ox - padding} {oy - padding} {w + padding * 2} {h + padding * 2}"'
             f' width="{w + padding * 2}pt" height="{h + padding * 2}pt">'
         )
         body = '\n'.join(self.elements)

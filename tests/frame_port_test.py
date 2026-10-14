@@ -54,6 +54,23 @@ def test_frame_port_with_interface_renders():
         "required-interface socket on the frame port"
 
 
+def test_svg_viewbox_never_clips_negative_origin_content():
+    """Vision review of Figure 4.6 (3/10): the viewBox anchors at fixed
+    (-pad, -pad) and clipped the frame header/ports when frame ports and
+    interface arcs pushed content into negative coordinates."""
+    d, eps, fp = _framed()
+    svg = d.render_svg(routing='orthogonal')
+    m = re.search(r'viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"', svg)
+    assert m, svg
+    vx, vy, vw, vh = (float(g) for g in m.groups())
+    ys = [float(g) for g in re.findall(r'<(?:rect|line|polyline|text)[^>]*?\by="(-?[\d.]+)"', svg)]
+    ys += [float(g) for g in re.findall(r'<(?:rect|text)[^>]*?\bx="(-?[\d.]+)"', svg)]
+    # every drawn coordinate must be inside the viewBox
+    assert all(vy <= y <= vy + vh and vx <= x <= vx + vw
+               for y, x in zip(ys[::2], ys[1::2])), \
+        "drawn content falls outside the viewBox"
+
+
 def test_frame_and_frame_ports_survive_di_round_trip():
     d, eps, fp = _framed()
     d2 = from_di(to_di(d))

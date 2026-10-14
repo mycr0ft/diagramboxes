@@ -2766,6 +2766,24 @@ class Diagram:
         for v in self.views:
             xs.extend([v.x, v.x + v.w])
             ys.extend([v.y, v.y + v.h])
+        for p in self.frame_ports:
+            xs.extend([p.x, p.x + p.w])
+            ys.extend([p.y, p.y + p.h])
+            lab = getattr(p, 'label', '')
+            if lab:
+                lw = len(lab) * 2 + 6
+                if p.side == 'right':
+                    xs.append(p.x + p.w + lw)
+                elif p.side == 'left':
+                    xs.append(p.x - lw)
+                elif p.side == 'bottom':
+                    ys.append(p.y + p.h + 10)
+                elif p.side == 'top':
+                    ys.append(p.y - 10)
+            for i in p.interfaces:
+                ex1, ey1, ex2, ey2 = i.extent()
+                xs.extend([ex1, ex2])
+                ys.extend([ey1, ey2])
         for a in self.activities:
             xs.extend([a.x, a.x + a.w])
             ys.extend([a.y, a.y + a.h])
@@ -2782,6 +2800,33 @@ class Diagram:
             max_x = max(max_x, fr[2])
             min_y = min(min_y, fr[1])
             max_y = max(max_y, fr[3])
+
+        # Placed frame ports, their outside labels and interface arcs
+        # widen only the CANVAS — never the frame rectangle itself, or
+        # the port would stop straddling the border (it sits on it).
+        for p in self.frame_ports:
+            if getattr(p, 'placed', False):
+                min_x = min(min_x, p.x)
+                max_x = max(max_x, p.x + p.w)
+                min_y = min(min_y, p.y)
+                max_y = max(max_y, p.y + p.h)
+                lab = getattr(p, 'label', '')
+                if lab:
+                    lw = len(lab) * 2 + 6
+                    if p.side == 'right':
+                        max_x = max(max_x, p.x + p.w + lw)
+                    elif p.side == 'left':
+                        min_x = min(min_x, p.x - lw)
+                    elif p.side == 'bottom':
+                        max_y = max(max_y, p.y + p.h + 10)
+                    elif p.side == 'top':
+                        min_y = min(min_y, p.y - 10)
+                for i in p.interfaces:
+                    ex1, ey1, ex2, ey2 = i.extent()
+                    min_x = min(min_x, ex1)
+                    max_x = max(max_x, ex2)
+                    min_y = min(min_y, ey1)
+                    max_y = max(max_y, ey2)
         pad = 10
         w = int((max_x - min_x + pad * 2) * scale)
         h = int((max_y - min_y + pad * 2) * scale)
@@ -2901,4 +2946,5 @@ class Diagram:
                 svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 svg_draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
-        return c.output(width=w, height=h, padding=pad * scale)
+        return c.output(width=w, height=h, padding=pad * scale,
+                        origin=(min_x * scale, min_y * scale))
