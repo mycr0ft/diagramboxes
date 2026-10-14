@@ -80,6 +80,10 @@ class Port:
         self.offset = offset
         self.direction = direction
         self.label_inside = label_inside  # draw label inside the node (v0.4.0)
+        self.label_above = False  # label above the port box (Figure 4.6:
+                                  # port names print above the ports, off
+                                  # the connector's row) — default for
+                                  # FramePort
         self.interfaces = []   # lollipop/socket symbols beyond this port
         self.parent = None
         self.x = self.y = 0
@@ -144,6 +148,7 @@ class FramePort(Port):
         super().__init__(label, side=side, offset=offset, direction=direction)
         self.placed = False
         self.is_frame_port = True
+        self.label_above = True  # book convention: port name above the port
 
 
 class InterfaceSymbol:
@@ -2726,7 +2731,8 @@ class Diagram:
             draw_port_box(c, p.x, p.y, p.label, side=p.side,
                           direction=p.direction,
                           label_inside=getattr(p, 'label_inside', False),
-                          label_side=self._FRAME_PORT_INNER[p.side])
+                          label_side='top' if getattr(p, 'label_above', False)
+                          else self._FRAME_PORT_INNER[p.side])
             for i in p.interfaces:
                 draw_interface(c, i)
         for a in self.activities:
@@ -2853,7 +2859,9 @@ class Diagram:
                 lab = getattr(p, 'label', '')
                 if lab:
                     lw = len(lab) * 2 + 6
-                    if p.side == 'right':
+                    if getattr(p, 'label_above', False):
+                        min_y = min(min_y, p.y - 16)
+                    elif p.side == 'right':
                         max_x = max(max_x, p.x + p.w + lw)
                     elif p.side == 'left':
                         min_x = min(min_x, p.x - lw)

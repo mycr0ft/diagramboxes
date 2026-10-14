@@ -833,8 +833,13 @@ def svg_draw_port(c, p, with_label=True):
 
 
 def svg_port_label(c, p):
-    """Halo-backed port label; frame ports flip to the interior side."""
+    """Halo-backed port label; frame ports flip to the interior side.
+    ``label_above`` ports (book convention, Figure 4.6) print the label
+    above the port box so it never sits on the connector's row."""
     if not getattr(p, 'label', None):
+        return
+    if getattr(p, 'label_above', False):
+        c.add_label(p.x + p.w // 2, p.y - 8, p.label, anchor='middle')
         return
     side = p.side
     if getattr(p, 'is_frame_port', False):
