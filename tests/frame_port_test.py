@@ -71,6 +71,26 @@ def test_svg_viewbox_never_clips_negative_origin_content():
         "drawn content falls outside the viewBox"
 
 
+def test_frame_port_label_flips_to_frame_interior():
+    """Vision round 3 (Figure 4.6): the port name belongs on the frame's
+    interior side so it never collides with the outward interface
+    label/arc (book: 'solarPanel [2]' inside, 'Light Source' outside)."""
+    d, eps, fp = _framed()
+    svg = d.render_svg(routing='orthogonal')
+    prect = re.search(r'<rect x="(-?[\d.]+)" y="(-?[\d.]+)" '
+                      r'width="[\d.]+" height="[\d.]+" fill="white"', svg)
+    assert prect, svg
+    px = float(prect.group(1))
+    lm = re.search(r'<text x="(-?[\d.]+)" [^>]*anchor="(?:start|end|middle)"[^>]*>solarPanel', svg)
+    assert lm, svg
+    lx = float(lm.group(1))
+    assert lx > px, f"port label '{lx}' must sit inside the frame (right of box at {px})"
+    ifm = re.search(r'<text x="(-?[\d.]+)"[^>]*>Light Source</text>', svg)
+    assert ifm, svg
+    assert float(ifm.group(1)) < px, \
+        "interface label stays on the outward (left) side"
+
+
 def test_frame_and_frame_ports_survive_di_round_trip():
     d, eps, fp = _framed()
     d2 = from_di(to_di(d))

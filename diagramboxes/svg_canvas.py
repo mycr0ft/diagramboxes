@@ -268,9 +268,13 @@ class SvgCanvas:
         else:
             rx = x - w + pad
         ry = y - size * 1.25
+        # halo coords must be scaled like the text (s()) — unscaled halos
+        # drift away from their text for content far from the origin
+        # (Figure 4.6 vision review: labels unreadable, frame border
+        # erased in the wrong spans)
         self.elements.append(
-            f'<rect class="halo" x="{rx:.1f}" y="{ry:.1f}"'
-            f' width="{w:.1f}" height="{h:.1f}" fill="white" />')
+            f'<rect class="halo" x="{self.s(rx):.1f}" y="{self.s(ry):.1f}"'
+            f' width="{self.s(w):.1f}" height="{self.s(h):.1f}" fill="white" />')
         self.add_text(x, y, text, size=self.s(size), anchor=anchor,
                       font_style='italic' if italic else None)
         self.close_group()
@@ -816,21 +820,28 @@ def svg_draw_view(c, v):
 
 
 def svg_draw_port(c, p):
-    """Draw a port box with optional direction arrow inside and label outside."""
+    """Draw a port box with optional direction arrow inside and label
+    outside. Frame ports flip their label to the frame's interior side
+    (the interface symbol keeps the outward face)."""
     c.add_rect(p.x, p.y, p.w, p.h, fill='white')
     arrow = _port_arrow(p.side, p.direction)
     if arrow:
         c.add_text(p.x + p.w // 2, p.y + p.h // 2 + 2, arrow, anchor='middle')
+    side = p.side
+    if getattr(p, 'is_frame_port', False):
+        side = {'left': 'right', 'right': 'left',
+                'top': 'bottom', 'bottom': 'top'}[side]
     if p.label:
-        if p.side == 'left' and getattr(p, 'label_inside', False):
-            c.add_text(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
-        elif p.side == 'right' and getattr(p, 'label_inside', False):
-            c.add_text(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
-        elif p.side == 'left':
-            c.add_text(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
-        elif p.side == 'right':
-            c.add_text(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
-        elif p.side == 'top':
-            c.add_text(p.x + p.w // 2, p.y - 4, p.label, anchor='middle')
-        elif p.side == 'bottom':
-            c.add_text(p.x + p.w // 2, p.y + p.h + 8, p.label, anchor='middle')
+        # halo labels (erases any connector passing beneath the text)
+        if side == 'left' and getattr(p, 'label_inside', False):
+            c.add_label(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
+        elif side == 'right' and getattr(p, 'label_inside', False):
+            c.add_label(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
+        elif side == 'left':
+            c.add_label(p.x - 4, p.y + p.h // 2 + 2, p.label, anchor='end')
+        elif side == 'right':
+            c.add_label(p.x + p.w + 4, p.y + p.h // 2 + 2, p.label, anchor='start')
+        elif side == 'top':
+            c.add_label(p.x + p.w // 2, p.y - 4, p.label, anchor='middle')
+        elif side == 'bottom':
+            c.add_label(p.x + p.w // 2, p.y + p.h + 8, p.label, anchor='middle')

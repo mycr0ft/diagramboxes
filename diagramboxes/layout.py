@@ -143,6 +143,7 @@ class FramePort(Port):
     def __init__(self, label, side='left', offset=0.5, direction=None):
         super().__init__(label, side=side, offset=offset, direction=direction)
         self.placed = False
+        self.is_frame_port = True
 
 
 class InterfaceSymbol:
@@ -1788,6 +1789,8 @@ class Diagram:
                 continue
             if e.source in child_nodes or e.target in child_nodes:
                 continue
+            if isinstance(e.source, FramePort) or isinstance(e.target, FramePort):
+                continue  # frame-port edges route in the placement pass
             incoming[e.target].add(e.source)
 
         roots = [n for n in eligible if not incoming[n]]
@@ -1943,6 +1946,31 @@ class Diagram:
         else:  # bottom
             return (p.cx, p.y + PORT_H)
 
+    _FRAME_PORT_INNER = {'left': 'right', 'right': 'left',
+                         'top': 'bottom', 'bottom': 'top'}
+
+    def _frame_port_anchor(self, p):
+        """(x, y, side) where a connector from INSIDE the frame attaches
+        to a frame port: the face pointing into the frame — the opposite
+        of the port's outward side (§4.8: frame ports are interaction
+        points on the header block's boundary; internal connectors
+        approach from the frame's contents area)."""
+        side = self._FRAME_PORT_INNER[p.side]
+        if side == 'left':
+            return (p.x, p.cy), side
+        if side == 'right':
+            return (p.x + PORT_W, p.cy), side
+        if side == 'top':
+            return (p.cx, p.y), side
+        return (p.cx, p.y + PORT_H), side
+
+    def _edge_port_anchor(self, p):
+        """(x, y, side) for routing: frame ports anchor on their inner
+        face, plain ports on their outer face."""
+        if isinstance(p, FramePort):
+            return self._frame_port_anchor(p)
+        return self._port_boundary(p), p.side
+
     def _route_clear(self, pts, e):
         """True if every axis-aligned segment of ``pts`` avoids foreign boxes.
 
@@ -2044,16 +2072,16 @@ class Diagram:
         sp, tp = e.source_port, e.target_port
         if not sp or not tp:
             return False
-        sx, sy = self._port_boundary(sp)
-        tx, ty = self._port_boundary(tp)
+        (sx, sy), _sside = self._edge_port_anchor(sp)
+        (tx, ty), tside = self._edge_port_anchor(tp)
         gap = 4
 
         # Perpendicular approach point for the target port face.
-        if tp.side == 'left':
+        if tside == 'left':
             ax, ay = tx - gap, ty
-        elif tp.side == 'right':
+        elif tside == 'right':
             ax, ay = tx + gap, ty
-        elif tp.side == 'top':
+        elif tside == 'top':
             ax, ay = tx, ty - gap
         else:  # bottom
             ax, ay = tx, ty + gap
@@ -2061,7 +2089,7 @@ class Diagram:
         cands = []
 
         # 1. Plain Z-shape (historical behaviour) as the first candidate.
-        if tp.side in ('left', 'right'):
+        if tside in ('left', 'right'):
             if (sx - tx) * (ax - tx) < 0:
                 # Hook geometry — source is on the far side of the port:
                 # direct L-shape (validated below, after the wraps).
@@ -2075,7 +2103,7 @@ class Diagram:
                 cands.append([(sx, sy), (ax, sy), (ax, ay), (tx, ty)])
 
         # 2. Wrap-around bypasses for side-facing target ports.
-        if tp.side in ('left', 'right'):
+        if tside in ('left', 'right'):
             for by in self._bypass_candidates(sx, sy, ax, ay, e):
                 if by == ay:
                     continue
@@ -2091,12 +2119,12 @@ class Diagram:
                 cands.append([(sx, sy), (ax, my), (ax, ay), (tx, ty)])
 
         # 4. Direct L-shaped fallbacks (hook geometries).
-        if tp.side in ('left', 'right') and (sx - tx) * (ax - tx) < 0:
+        if tside in ('left', 'right') and (sx - tx) * (ax - tx) < 0:
             if abs(ty - sy) > abs(tx - sx):
                 cands.append([(sx, sy), (sx, ty), (tx, ty)])
             else:
                 cands.append([(sx, sy), (tx, sy), (tx, ty)])
-        elif tp.side in ('top', 'bottom') and (sy - ty) * (ay - ty) < 0:
+        elif tside in ('top', 'bottom') and (sy - ty) * (ay - ty) < 0:
             if abs(ty - sy) > abs(tx - sx):
                 cands.append([(sx, sy), (sx, ty), (tx, ty)])
             else:
@@ -2115,7 +2143,7 @@ class Diagram:
                 return True
 
         # Fallback: historical Z-shape (unchanged when nothing clears).
-        if tp.side in ('left', 'right'):
+        if tside in ('left', 'right'):
             if abs(ty - sy) > abs(tx - sx):
                 e.route((sx, sy), (sx, ty), (tx, ty))
             else:
@@ -2500,6 +2528,10 @@ class Diagram:
             xs.extend([a.x, a.x + a.w])
             ys.extend([a.y, a.y + a.h])
         for e in self.edges:
+            if isinstance(getattr(e, 'source_port', None), FramePort) or \
+                    isinstance(getattr(e, 'target_port', None), FramePort):
+                continue  # routed frame-port waypoints must not widen the
+                          # frame between port placement and drawing
             for px, py in e.waypoints:
                 xs.append(px)
                 ys.append(py)
@@ -2693,7 +2725,8 @@ class Diagram:
         for p in self.frame_ports:
             draw_port_box(c, p.x, p.y, p.label, side=p.side,
                           direction=p.direction,
-                          label_inside=getattr(p, 'label_inside', False))
+                          label_inside=getattr(p, 'label_inside', False),
+                          label_side=self._FRAME_PORT_INNER[p.side])
             for i in p.interfaces:
                 draw_interface(c, i)
         for a in self.activities:
@@ -2929,15 +2962,17 @@ class Diagram:
                         svg_draw_interface(c, i)
                 for i in child.interfaces:
                     svg_draw_interface(c, i)
-        for p in self.frame_ports:
-            svg_draw_port(c, p)
-            for i in p.interfaces:
-                svg_draw_interface(c, i)
+        # NOTE: frame ports are drawn AFTER the edges (see below) so their
+        # halo labels erase the connector ink, not the reverse.
         for e in self.edges:
             if self._is_visual_containment(e):
                 continue
             svg_draw_edge(c, e, keep_away=all_path_px - set(e.waypoints),
                           used_labels=svg_used_labels)
+        for p in self.frame_ports:
+            svg_draw_port(c, p)
+            for i in p.interfaces:
+                svg_draw_interface(c, i)
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node
