@@ -70,7 +70,8 @@ from diagramboxes.layout import (
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate,
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate,
     HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort, \
-    Lifeline, SeqMessage, SeqExec, SeqDestruction, SeqFragment,
+    Lifeline, SeqMessage, SeqExec, SeqDestruction, SeqFragment, \
+    SeqConstraint,
 )
 
 __all__ = ["to_di", "from_di", "DI_VERSION", "DI_NS", "DC_NS", "DG_NS"]
@@ -329,6 +330,10 @@ def to_di(diagram):
              "li": [li_index[id(li)] for li in f.lifelines],
              "operands": [[row, g] for row, g in f.operands]}
             for f in diagram.fragments]
+        out["sequenceConstraints"] = [
+            {"li": li_index[id(c.lifeline)], "y": c.y, "text": c.text,
+             "dx": c.dx, "rounded": c.rounded}
+            for c in diagram.constraints]
     return out
 
 
@@ -671,6 +676,15 @@ def to_di_xmi(payload, name="Diagram"):
                 gattrs.append('guard="%s"' % _xml_escape(guard))
             out.append('      <operand %s/>' % " ".join(gattrs))
         out.append('    </di:SeqFragment>')
+    for ce in payload.get("sequenceConstraints", []):
+        cattrs = ['li="%d"' % ce.get("li", 0),
+                  'y="%g"' % ce.get("y", 0),
+                  'text="%s"' % _xml_escape(ce.get("text", ""))]
+        if ce.get("dx"):
+            cattrs.append('dx="%g"' % ce["dx"])
+        if ce.get("rounded"):
+            cattrs.append('rounded="true"')
+        out.append('    <di:SeqConstraint %s/>' % " ".join(cattrs))
     out.append("  </di:Diagram>")
     out.append("</xmi:XMI>")
     return "\n".join(out)
@@ -792,6 +806,12 @@ def from_di(payload):
             fd_.get("operator", 'opt'), guard=fd_.get("guard"),
             operands=fd_.get("operands"), name=fd_.get("name"),
             frag_range=fd_.get("range")))
+    for cd_ in payload.get("sequenceConstraints", []):
+        i = cd_.get("li", 0)
+        if i < len(lis):
+            d.constraints.append(SeqConstraint(
+                lis[i], cd_.get("y", 0), cd_.get("text", ""),
+                dx=cd_.get("dx", 0), state_notation=cd_.get("rounded", False)))
 
     def _edge_port(pd, ref):
         """Rebuild an edge-anchored port. FramePort references bind to the
@@ -1009,4 +1029,12 @@ def from_di_xmi(xml_text):
                     [float(op.get("y", 0)), str(op.get("guard"))]
                     if op.get("guard") else [float(op.get("y", 0)), None])
             sd.setdefault("sequenceFragments", []).append(fds)
+        for ce in diagram.findall("%sSeqConstraint" % di_tag):
+            sd.setdefault("sequenceConstraints", []).append({
+                "li": int(ce.get("li", 0)),
+                "y": float(ce.get("y", 0)),
+                "text": str(ce.get("text", "")),
+                "dx": float(ce.get("dx", 0)),
+                "rounded": ce.get("rounded") == "true",
+            })
     return sd

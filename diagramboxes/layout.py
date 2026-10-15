@@ -36,13 +36,14 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD, _is_folder, \
     draw_seq_head, draw_seq_exec, draw_seq_message, draw_destruction_x, \
     draw_seq_fragment, \
+    draw_seq_constraint, \
     draw_line, draw_arrowhead
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
     svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame, \
     svg_seq_head, svg_seq_exec, svg_seq_message, svg_seq_self_message, \
-    svg_seq_destruction, svg_seq_fragment, \
+    svg_seq_destruction, svg_seq_fragment, svg_seq_constraint, \
     svg_draw_interface
 
 _MIN_PORT_SPACING = 8
@@ -189,7 +190,7 @@ class SeqMessage:
     Horizontal at row ``y``."""
 
     def __init__(self, src, dst, kind, y, label=None,
-                 from_left=True, to_right=True):
+                 from_left=True, to_right=True, attach=None):
         self.src = src
         self.dst = dst
         self.kind = kind
@@ -197,6 +198,7 @@ class SeqMessage:
         self.label = label
         self.from_left = from_left    # found messages: enter from the left
         self.to_right = to_right      # lost messages: leave to the right
+        self.attach = attach          # None=auto (frame border when framed)
         self.x1 = 0
         self.x2 = 0
 
@@ -258,6 +260,25 @@ class SeqFragment:
     def __repr__(self):
         return 'SeqFragment(%r y=%s..%s over %d lifelines)' % (
             self.operator, self.y1, self.y2, len(self.lifelines))
+
+
+class SeqConstraint:
+    """A time constraint, duration constraint, or state invariant
+    (§7.8): text in curly braces floating over (or beside, via ``dx``)
+    a lifeline just above the event occurrence it binds. State-
+    notation invariants (§7.8.3/§7.12) render as ROUND-CORNERED
+    rectangles holding the state's name instead of a braced Boolean."""
+
+    def __init__(self, lifeline, y, text, dx=0, state_notation=False):
+        self.lifeline = lifeline
+        self.y = y
+        self.text = text
+        self.dx = dx
+        self.rounded = bool(state_notation)
+
+    def __repr__(self):
+        return 'SeqConstraint(%r y=%s%s)' % (
+            self.text, self.y, ' state' if self.rounded else '')
 
 
 class FramePort(Port):
@@ -1071,6 +1092,7 @@ class Diagram:
         self.exec_specs = []   # SeqExec execution specifications (§7.7)
         self.destructions = []  # SeqDestruction occurrences (§7.6)
         self.fragments = []    # SeqFragments / interaction uses (§7.9-7.10)
+        self.constraints = []  # SeqConstraint floats / state invariants (§7.8)
 
     # ── sequence-diagram construction (§7.4–7.7) ──
 
@@ -1091,9 +1113,9 @@ class Diagram:
         return li
 
     def _seq_message(self, src, dst, kind, y, label, from_left=True,
-                     to_right=True):
+                     to_right=True, attach=None):
         m = SeqMessage(src, dst, kind, y, label,
-                       from_left=from_left, to_right=to_right)
+                       from_left=from_left, to_right=to_right, attach=attach)
         if kind == 'create':
             dst.head_y = y   # arrowhead lands at the created lifeline's head
             dst.created = True
@@ -1115,19 +1137,22 @@ class Diagram:
         the performing lifeline back to the invoker."""
         return self._seq_message(src, dst, 'reply', y, label)
 
-    def seq_found(self, dst, y, label=None, kind='sync', from_left=True):
-        """Found message (§7.5): the sender is outside the diagram —
-        the arrow departs mid-air (or at the frame border when the
-        diagram is framed) into the receiver."""
+    def seq_found(self, dst, y, label=None, kind='sync', from_left=True,
+                  attach=None):
+        """Found message (§7.5): the sender is outside the diagram. The
+        arrow departs at the frame border by default (framed diagrams);
+        ``attach=False`` forces a mid-air floating end (excerpt-crop
+        style, e.g. Figure 7.13's cropped sender)."""
         return self._seq_message(None, dst, kind, y, label,
-                                 from_left=from_left)
+                                 from_left=from_left, attach=attach)
 
-    def seq_lost(self, src, y, label=None, kind='reply', to_right=True):
-        """Lost message (§7.5): the receiver is outside the diagram —
-        the line departs the sender and ends mid-air (or at the frame
-        border when the diagram is framed)."""
+    def seq_lost(self, src, y, label=None, kind='reply', to_right=True,
+                 attach=None):
+        """Lost message (§7.5): the receiver is outside the diagram. The
+        line ends at the frame border by default (framed diagrams);
+        ``attach=False`` forces a mid-air floating end."""
         return self._seq_message(src, None, kind, y, label,
-                                 to_right=to_right)
+                                 to_right=to_right, attach=attach)
 
     def seq_create(self, src, dst, label=None, y=None):
         """Create message (§7.5.2): dashed line, open arrowhead landing
@@ -1180,6 +1205,18 @@ class Diagram:
         f = SeqFragment(lifelines, y1, y2, 'ref', name=name)
         self.fragments.append(f)
         return f
+
+    def seq_constraint(self, lifeline, y, text, dx=0, state_notation=False):
+        """Time/duration constraint or state invariant (§7.8): braced
+        text floating over the lifeline just above the bound event
+        occurrence (``dx`` offsets it sideways, e.g. a duration
+        constraint beside a spec); state invariants given in the state
+        notation render as round-cornered rectangles naming the
+        required state (§7.8.3, Figure 7.12)."""
+        c = SeqConstraint(lifeline, y, text, dx=dx,
+                          state_notation=state_notation)
+        self.constraints.append(c)
+        return c
 
     def _fragment_span_x(self, f):
         lo = min(li.x for li in f.lifelines) - 10
@@ -1234,9 +1271,11 @@ class Diagram:
 
     def _seq_midair_endpoints(self, m):
         """(e1, e2) for found/lost messages: flush at the frame border
-        when the diagram is framed (the book's strokes overlap the
-        border column), else 90 units out beyond the nearest lifeline."""
-        fr = self._frame_rect() if self.frame is not None else None
+        when the diagram is framed and ``attach`` unset (the book's
+        strokes overlap the border column); ``attach=False`` forces a
+        floating mid-air end 90 units out (excerpt-crop style)."""
+        framed = self.frame is not None and m.attach is not False
+        fr = self._frame_rect() if framed else None
         if m.src is None:
             if fr is not None:
                 return ((fr[0], m.dst.x) if m.from_left
@@ -2857,15 +2896,19 @@ class Diagram:
                        self._lifeline_tail_end(li)])
         for m in self.messages:
             if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
-                if self.frame is None:
-                    # framed diagrams attach mid-air ends AT the border —
-                    # counting them here would widen the frame instead
+                if self.frame is None or getattr(m, 'attach', None) is False:
+                    # border-attached ends live ON the frame (counting
+                    # them here would widen it); floating ends count
                     xs.extend([m.x1, m.x2])
                 ys.append(m.y)
         for f in self.fragments:
             lo, hi = self._fragment_span_x(f)
             xs.extend([lo, hi])
             ys.extend([f.y1, f.y2])
+        for cc in self.constraints:
+            lx = cc.lifeline.x + cc.dx
+            xs.extend([lx - len(cc.text) - 2, lx + len(cc.text) + 2])
+            ys.extend([cc.y, cc.y + (10 if cc.rounded else 0)])
         if not xs:
             return None
         return min(xs), min(ys), max(xs), max(ys)
@@ -3103,6 +3146,8 @@ class Diagram:
                 draw_seq_message(c, m.x1, m.x2, m.y, m.kind, m.label)
         for x in self.destructions:
             draw_destruction_x(c, x.lifeline.x, x.y)
+        for cc in self.constraints:
+            draw_seq_constraint(c, cc.lifeline, cc)
         for f in self.fragments:
             draw_seq_fragment(c, f, self._fragment_span_x(f))
         # Composite-internal edges (v0.4.0) — after boxes, so they land in
@@ -3197,13 +3242,20 @@ class Diagram:
             ys.extend([li.head_y - 6, li.head_y + li.h,
                        self._lifeline_tail_end(li)])
         for m in self.messages:
-            if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
+            if getattr(m, 'src', None) is None:
+                xs.extend([m.x1, m.x2])
+                ys.append(m.y)
+            elif getattr(m, 'dst', None) is None:
                 xs.extend([m.x1, m.x2])
                 ys.append(m.y)
         for f in self.fragments:
             lo, hi = self._fragment_span_x(f)
             xs.extend([lo, hi])
             ys.extend([f.y1, f.y2])
+        for cc in self.constraints:
+            lx = cc.lifeline.x + cc.dx
+            xs.extend([lx - len(cc.text) - 2, lx + len(cc.text) + 2])
+            ys.extend([cc.y, cc.y + (10 if cc.rounded else 0)])
 
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
@@ -3384,6 +3436,8 @@ class Diagram:
                 svg_seq_message(c, m.x1, m.x2, m.y, m.kind, m.label)
         for x in self.destructions:
             svg_seq_destruction(c, x.lifeline.x, x.y)
+        for cc in self.constraints:
+            svg_seq_constraint(c, cc.lifeline, cc)
         for f in self.fragments:
             svg_seq_fragment(c, f, self._fragment_span_x(f))
 

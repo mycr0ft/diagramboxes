@@ -113,6 +113,32 @@ def _draw_triangle(c, x, y, angle, size):
     for px, py in line(bx + cos(hp) * hw, by + sin(hp) * hw, bx - cos(hp) * hw, by - sin(hp) * hw): c.set(px, py)
 
 
+def _fill_triangle(c, x, y, angle, size):
+    """Fill a triangle's interior (barycentric inside-test over its
+    bounding box) — the braille rendering of a FILLED-IN arrowhead."""
+    hp = angle + pi / 2
+    hw = size * 0.4
+    bx = x - cos(angle) * size
+    by = y - sin(angle) * size
+    v1 = (x, y)
+    v2 = (bx + cos(hp) * hw, by + sin(hp) * hw)
+    v3 = (bx - cos(hp) * hw, by - sin(hp) * hw)
+    xlo = int(min(v1[0], v2[0], v3[0]))
+    xhi = int(max(v1[0], v2[0], v3[0]))
+    ylo = int(min(v1[1], v2[1], v3[1]))
+    yhi = int(max(v1[1], v2[1], v3[1]))
+    for py in range(ylo, yhi + 1):
+        for px in range(xlo, xhi + 1):
+            def _side(a, b, px, py):
+                return (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0])
+            d1 = _side(v1, v2, px, py)
+            d2 = _side(v2, v3, px, py)
+            d3 = _side(v3, v1, px, py)
+            if (d1 >= 0 and d2 >= 0 and d3 >= 0) or \
+                    (d1 <= 0 and d2 <= 0 and d3 <= 0):
+                c.set(px, py)
+
+
 def _draw_diamond(c, x, y, angle, size, fill=False):
     s = size * 0.7
     hp = angle + pi / 2
@@ -859,8 +885,12 @@ def draw_seq_message(c, x1, x2, y, kind, label):
     draw_line(c, lo, int(y), hi, int(y), DASHED if dashed else SOLID)
     if hi > lo:
         a_angle = 0.0 if x2 >= x1 else pi
-        style = FILLED if kind == 'sync' else OPEN
-        draw_arrowhead(c, int(x2), int(y), a_angle, style)
+        if kind == 'sync':
+            # FILLED-IN triangle (§7.5.2), not the hollow one
+            draw_arrowhead(c, int(x2), int(y), a_angle, TRIANGLE)
+            _fill_triangle(c, int(x2), int(y), a_angle, ARROW_SIZE)
+        else:
+            draw_arrowhead(c, int(x2), int(y), a_angle, OPEN)
     if label:
         c.set_text((lo + hi) // 2 - len(label), int(y) - 5, label)
 
@@ -893,6 +923,16 @@ def draw_seq_fragment(c, f, span_x):
         draw_line(c, lo, int(row), hi, int(row), DASHED)
         if guard:
             c.set_text(lo + 4, int(row) + 4, '[%s]' % guard)
+
+
+def draw_seq_constraint(c, li, con):
+    """Constraint float: braced text (round-cornered state-notation box
+    is an SVG nicety; braille prints the text only)."""
+    x = int(li.x + con.dx)
+    if con.rounded:
+        c.set_text(x - len(con.text), con.y, con.text)
+    else:
+        c.set_text(x - len(con.text) - 1, con.y, '{%s}' % con.text)
 
 
 # ── activity node drawing ──

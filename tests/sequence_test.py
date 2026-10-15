@@ -138,7 +138,34 @@ def test_found_lost_attach_to_frame_border_when_framed():
     assert abs(m2.x2 - x1) < 1, 'lost line terminates flush at the left border'
 
 
-def test_sequence_survives_di_and_xmi_round_trip():
+def test_constraints_and_state_invariants():
+    """§7.8: time/duration constraints (braced text floating over/near
+    a lifeline) and state invariants (Boolean or state-notation
+    round-cornered rectangle, §7.8.3/§7.12)."""
+    d, fc, mans = _diag()
+    c1 = d.seq_constraint(fc, y=40, text='currentCommand.executionTime')
+    c2 = d.seq_constraint(mans, y=60, text='2min..5min', dx=-30)
+    c3 = d.seq_constraint(fc, y=80, text='currentOrbitRadius == 7000 km')
+    c4 = d.seq_constraint(fc, y=100, text='At Transfer Orbit Apogee',
+                          state_notation=True)
+    assert c1.rounded is False and c4.rounded is True
+    svg = d.render_svg(routing='orthogonal')
+    assert '{currentCommand.executionTime}' in svg
+    assert '{2min..5min}' in svg
+    assert '{currentOrbitRadius == 7000 km}' in svg
+    assert 'At Transfer Orbit Apogee' in svg
+    # the state-notation invariant is a ROUND-CORNERED rectangle
+    assert re.search(r'<rect[^>]*rx="[^"]*"[^>]*>[^<]*<', svg) or \
+        re.search(r'<rect [^>]*rx="2" [^>]*/>', svg), \
+        'state-notation invariant draws rounded'
+    d2 = from_di(to_di(d))
+    assert d2.constraints[3].rounded is True
+    d3 = from_di(from_di_xmi(to_di_xmi(to_di(d))))
+    assert d3.constraints[1].text == '2min..5min'
+    assert d3.constraints[1].dx == -30
+
+
+def test_sequence_survives_di_and_xmi_round_trip_alt():
     d, fc, mans = _diag()
     mansdd = d.add_lifeline('mansdd : MANS Device Driver', created=True)
     d.seq_create(fc, mansdd, label='initializeMANS')

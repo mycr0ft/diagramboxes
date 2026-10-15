@@ -380,15 +380,17 @@ def svg_seq_message(c, x1, x2, y, kind, label):
     dashed = kind in ('reply', 'create', 'delete')
     c.add_line(x1, y, x2, y, dashed=dashed)
     a_angle = 0.0 if x2 >= x1 else pi
-    style = FILLED if kind == 'sync' else OPEN
-    poly, fill = _arrow_polygon(x2, y, a_angle, style)
+    # synchronous messages take a FILLED-IN TRIANGLE (§7.5.2); TRIANGLE
+    # yields the hollow triangle polygon — fill it black
+    poly, fill = _arrow_polygon(x2, y, a_angle,
+                                TRIANGLE if kind == 'sync' else OPEN)
     lines = poly if isinstance(poly, (list, tuple)) else []
     if fill == 'open':
         for lx1, ly1, lx2, ly2 in lines:
             c.add_line(lx1, ly1, lx2, ly2)
     elif poly:
-        c.add_polygon(poly, fill='black' if fill == FILLED else fill,
-                      stroke=c.STROKE)
+        fill_color = 'black' if kind == 'sync' else 'white'
+        c.add_polygon(poly, fill=fill_color, stroke=c.STROKE)
     if label:
         c.add_label((x1 + x2) / 2, y - 4, label, anchor='middle')
 
@@ -425,7 +427,9 @@ def svg_seq_fragment(c, f, span_x):
     if f.is_ref:
         c.add_rect(lo, f.y1, hi - lo, f.y2 - f.y1, fill='white')
     else:
-        c.add_rect(lo, f.y1, hi - lo, f.y2 - f.y1)
+        # transparent: the fragment must NOT cover the enclosed messages
+        # (the add_rect default gray fill blanked the interior)
+        c.add_rect(lo, f.y1, hi - lo, f.y2 - f.y1, fill='none')
     pent = f.operator + ((' %s' % f.frag_range) if f.frag_range else '')
     pw = len(pent) * 2 + 6
     c.add_polygon([
@@ -444,6 +448,19 @@ def svg_seq_fragment(c, f, span_x):
         if guard:
             g = '[%s]' % guard
             c.add_label(lo + 4, row + 9, g, anchor='start')
+
+
+# ── sequence constraints / state invariants (§7.8) ──
+
+def svg_seq_constraint(c, li, con):
+    """Braced floating text (or a round-cornered state-notation box)."""
+    x = li.x + con.dx
+    if con.rounded:
+        w = len(con.text) * 2 + 10
+        c.add_rect(x - w / 2, con.y, w, 10, fill='white', rx=3, ry=3)
+        c.add_text(x, con.y + 6, con.text, anchor='middle')
+    else:
+        c.add_label(x, con.y, '{%s}' % con.text, anchor='middle')
 
 
 # ── High-level drawing functions for diagrams ──
