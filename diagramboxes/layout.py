@@ -37,12 +37,14 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_seq_head, draw_seq_exec, draw_seq_message, draw_destruction_x, \
     draw_seq_fragment, \
     draw_seq_constraint, \
+    draw_par_param, \
     draw_line, draw_arrowhead
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
     svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame, \
     svg_seq_head, svg_seq_exec, svg_seq_message, svg_seq_self_message, \
+    svg_par_param, \
     svg_seq_destruction, svg_seq_fragment, svg_seq_constraint, \
     svg_draw_interface
 
@@ -301,7 +303,6 @@ class InterfaceSymbol:
     with an open semicircle (socket). The name renders as a label near
     the symbol (Delligatti §3.4.1.5, Figures 4.5/4.6).
     """
-
     def __init__(self, name, kind='provided', side='right', offset=0.5,
                  parent=None, index=0):
         self.name = name
@@ -477,6 +478,32 @@ class Node:
 
     def contains(self, px, py):
         return self.x <= px <= self.x + self.w and self.y <= py <= self.y + self.h
+
+
+PAR_PARAM_S = 8   # edge length of the constraint-parameter square (§9.6)
+
+
+class ParParam(Node):
+    """A constraint parameter (SysML v1 §9.6, Figures 9.3/9.4): a small
+    square attached to the INSIDE of its owner's boundary — a constraint
+    property, or the diagram frame itself when the frame represents a
+    constraint block. Position and binding-edge routing are deferred to
+    ``Diagram._place_par_params`` (geometry exists only after layout).
+    Registered in ``Diagram.par_params`` and deliberately NOT laid out
+    as a normal node.
+    """
+
+    def __init__(self, name, side='left', offset=0.5, owner=None):
+        self.side = side
+        self.offset = offset
+        self.owner = owner
+        self.is_par_param = True
+        self.placed = False
+        super().__init__(name)
+
+    def _calc_size(self):
+        self.w = PAR_PARAM_S
+        self.h = PAR_PARAM_S
 
 
 class Comment:
@@ -1009,6 +1036,8 @@ class Edge:
         # type as the label near it.
         self.item_flow = item_flow
         self.item_position = item_position
+        # Binding connector (§9.8): solid, arrowless, set by Diagram.bind
+        self.is_binding = False
         self.waypoints = []
 
     def route(self, *points):
@@ -1087,6 +1116,7 @@ class Diagram:
         self.edges = []
         self.frame = None  # optional DiagramFrame (SysML v1 diagram-kind)
         self.frame_ports = []  # FramePorts straddling the frame border (§4.8)
+        self.par_params = []  # constraint-parameter squares (§9.6)
         self.lifelines = []    # sequence participants (§7.4)
         self.messages = []     # SeqMessages (§7.5)
         self.exec_specs = []   # SeqExec execution specifications (§7.7)
@@ -1419,6 +1449,47 @@ class Diagram:
         self.frame = DiagramFrame(kind, element_kind, element_name,
                                   diagram_name)
         return self.frame
+
+    def par_constraint(self, name, type_):
+        """Constraint property (§9.5): a usage of a constraint block in
+        the context of an owning block — round-angle node with the name
+        string ``<constraint name> : <type>``."""
+        n = self.add_node('%s : %s' % (name, type_), rounded=True)
+        return n
+
+    def par_value(self, name, type_, mult=None, default=None):
+        """Value property (§9.7): plain-rectangle node with the string
+        ``<value name> : <type> [<mult>] = <default>``. Valid only when
+        the frame represents a BLOCK (constraint blocks cannot own value
+        properties)."""
+        parts = '%s : %s' % (name, type_)
+        if mult is not None:
+            parts += ' [%s]' % mult
+        if default is not None:
+            parts += ' = %s' % default
+        return self.add_node(parts)
+
+    def par_param(self, name, type_='', owner=None, side='left',
+                  offset=0.5):
+        """Constraint parameter (§9.6): small square docked inside the
+        owner's boundary; ``owner=None`` docks on the diagram frame
+        itself (used when the frame represents a constraint block)."""
+        p = ParParam('%s : %s' % (name, type_), side=side, offset=offset,
+                     owner=owner)
+        self.par_params.append(p)
+        return p
+
+    def bind(self, a, b, **kw):
+        """Binding connector (§9.8): solid line with no arrowheads and no
+        direction — an equality between the two bound ends. At least one
+        end should be a constraint parameter (enforced only by
+        convention); the routed path is the straight segment between the
+        two docked boundary points."""
+        kw.setdefault('source_style', NONE)
+        kw.setdefault('target_style', NONE)
+        e = self.add_edge(a, b, **kw)
+        e.is_binding = True
+        return e
 
     def add_node(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
                  parent=None, compartments=None):
@@ -2976,12 +3047,85 @@ class Diagram:
                     self._route_single_port(e)
                 e.frame_pending = False
 
+    def _place_par_params(self):
+        """Dock ParParam squares inside their owner's boundary (or on the
+        frame's inner border when the owner is the frame, §9.6) and route
+        binding edges as straight boundary-to-boundary segments (§9.8) —
+        called from render/render_svg after layout (§9.4-9.8,
+        Figures 9.3/9.4)."""
+        if not self.par_params:
+            return
+        fr = self._frame_rect()
+        for p in self.par_params:
+            r = p.owner
+            if r is None and fr is not None:
+                x1, y1, x2, y2 = fr
+                if p.side == 'left':
+                    p.x, p.y = x1, y1 + int((y2 - y1) * p.offset) - p.h // 2
+                elif p.side == 'right':
+                    p.x = x2 - p.w
+                    p.y = y1 + int((y2 - y1) * p.offset) - p.h // 2
+                elif p.side == 'top':
+                    p.x = x1 + int((x2 - x1) * p.offset) - p.w // 2
+                    p.y = y1
+                else:
+                    p.x = x1 + int((x2 - x1) * p.offset) - p.w // 2
+                    p.y = y2 - p.h
+            elif r is not None:
+                if getattr(r, 'x', None) is None or (r.x == 0 and r.y == 0
+                                                     and r.w == 0):
+                    continue   # owner not laid out yet
+                if p.side == 'left':
+                    p.x = r.x
+                    p.y = r.y + int(r.h * p.offset) - p.h // 2
+                elif p.side == 'right':
+                    p.x = r.x + r.w - p.w
+                    p.y = r.y + int(r.h * p.offset) - p.h // 2
+                elif p.side == 'top':
+                    p.x = r.x + int(r.w * p.offset) - p.w // 2
+                    p.y = r.y
+                else:
+                    p.x = r.x + int(r.w * p.offset) - p.w // 2
+                    p.y = r.y + r.h - p.h
+            p.placed = True
+
+        def _dock_point(el, toward):
+            """Point on el's boundary (or center, for a parameter square)
+            facing the straight line's other end."""
+            if getattr(el, 'is_par_param', False):
+                return (el.x + el.w // 2, el.y + el.h // 2)
+            cx, cy = el.cx, el.cy
+            tx, ty = toward
+            if abs(tx - cx) >= abs(ty - cy):
+                # the line arrives horizontally: dock on the facing side
+                mid = cy + int((ty - cy) * el.w // (2 * max(1, abs(tx - cx))))
+                return (el.x, mid) if tx < cx else (el.x + el.w, mid)
+            mid = cx + int((tx - cx) * el.h // (2 * max(1, abs(ty - cy))))
+            return (mid, el.y) if ty < cy else (mid, el.y + el.h)
+
+        for e in self.edges:
+            if not getattr(e, 'is_binding', False):
+                continue
+            s, t = e.source, e.target
+            s_ok = getattr(s, 'is_par_param', False) and s.placed
+            t_ok = getattr(t, 'is_par_param', False) and t.placed
+            if s_ok and t_ok:
+                e.waypoints = [(s.x + s.w // 2, s.y + s.h // 2),
+                               (t.x + t.w // 2, t.y + t.h // 2)]
+            elif t_ok and not s_ok:
+                e.waypoints = [(t.x + t.w // 2, t.y + t.h // 2),
+                               _dock_point(s, (t.cx, t.cy))]
+            elif s_ok and s.placed:
+                e.waypoints = [(s.x + s.w // 2, s.y + s.h // 2),
+                               _dock_point(t, (s.cx, s.cy))]
+
     def render(self, c=None, routing='orthogonal', layer_gap=50, node_gap=12, margin=8):
         if c is None:
             c = Canvas()
         self.layout(routing=routing, layer_gap=layer_gap, node_gap=node_gap, margin=margin)
         self._update_port_positions()
         self._place_frame_ports()
+        self._place_par_params()
         used_labels = set()
         all_path_px = set()
         for e in self.edges:
@@ -3114,6 +3258,8 @@ class Diagram:
                           else self._FRAME_PORT_INNER[p.side])
             for i in p.interfaces:
                 draw_interface(c, i)
+        for p in self.par_params:
+            draw_par_param(c, p)
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node
@@ -3185,6 +3331,7 @@ class Diagram:
         self.layout(routing=routing, layer_gap=layer_gap, node_gap=node_gap, margin=margin)
         self._update_port_positions()
         self._place_frame_ports()
+        self._place_par_params()
 
         # Compute bounds
         xs = [margin]
@@ -3448,6 +3595,10 @@ class Diagram:
             svg_seq_constraint(c, cc.lifeline, cc)
         for f in self.fragments:
             svg_seq_fragment(c, f, self._fragment_span_x(f))
+
+        # ── parametric diagram elements (§9.4–9.8) ──
+        for p in self.par_params:
+            svg_par_param(c, p)
 
         return c.output(width=w, height=h, padding=pad * scale,
                         origin=(min_x * scale, min_y * scale))

@@ -416,6 +416,19 @@ def svg_seq_self_message(c, x, y, kind, label):
 
 # ── combined fragments / interaction uses (§7.9–7.10) ──
 
+def svg_par_param(c, p):
+    """Constraint-parameter square (§9.6): a small square docked on the
+    inside of its owner's boundary; halo label beside it — rightward for
+    left/top/bottom-side params, leftward for right-side ones (drawn
+    AFTER edges so the square repaints over the binding line's tip)."""
+    c.add_rect(p.x, p.y, p.w, p.h, fill='white')
+    ly = p.y + p.h / 2 + 2
+    if p.side == 'right':
+        c.add_label(p.x - 2, ly, p.name, anchor='end')
+    else:
+        c.add_label(p.x + p.w + 2, ly, p.name, anchor='start')
+
+
 def svg_seq_fragment(c, f, span_x):
     """Rectangle over the participating lifelines (§7.9); a pentagon in
     the upper-left corner holds the interaction operator (+ range for

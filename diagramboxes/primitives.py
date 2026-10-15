@@ -1102,6 +1102,27 @@ def draw_interface(c, iface):
             c.set_text(int(cx) + 2, int(cy - dy * (r + 4)), iface.name)
 
 
+def draw_par_param(c, p):
+    """Constraint-parameter square (§9.6): a small square docked on the
+    inside of its owner's boundary; the '<name> : <type>' string renders
+    beside it — rightward for left/top/bottom-side params, leftward for
+    right-side ones."""
+    s = p.w
+    for rx, ry in line(p.x, p.y, p.x + s, p.y):
+        c.set(rx, ry)
+    for rx, ry in line(p.x + s, p.y, p.x + s, p.y + s):
+        c.set(rx, ry)
+    for rx, ry in line(p.x + s, p.y + s, p.x, p.y + s):
+        c.set(rx, ry)
+    for rx, ry in line(p.x, p.y + s, p.x, p.y):
+        c.set(rx, ry)
+    ly = p.y + s // 2
+    if p.side == 'right':
+        c.set_text(max(0, p.x - 2 - len(p.name)), ly, p.name)
+    else:
+        c.set_text(p.x + p.w + 2, ly, p.name)
+
+
 def draw_diagram_frame(c, x1, y1, x2, y2, header):
     """Enclosing SysML v1 diagram-kind frame: border rectangle with the
     header string in a strip along the top edge (Delligatti §2.4/§3.3)."""

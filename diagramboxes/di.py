@@ -71,7 +71,7 @@ from diagramboxes.layout import (
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate,
     HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort, \
     Lifeline, SeqMessage, SeqExec, SeqDestruction, SeqFragment, \
-    SeqConstraint,
+    SeqConstraint, ParParam,
 )
 
 __all__ = ["to_di", "from_di", "DI_VERSION", "DI_NS", "DC_NS", "DG_NS"]
@@ -165,6 +165,7 @@ def _edge_style_dict(e):
         "targetLabel": getattr(e, "target_label", None),
         "itemFlow": getattr(e, "item_flow", None),
         "itemPosition": getattr(e, "item_position", 0.5),
+        "binding": getattr(e, "is_binding", False),
     }
 
 
@@ -199,6 +200,12 @@ def to_di(diagram):
             if id(child) not in id_of:
                 counter += 1
                 id_of[id(child)] = "n%d" % counter
+    for par in getattr(diagram, "par_params", []):
+        # constraint-parameter squares (§9.6) — not laid-out nodes, but
+        # binding edges reference them, so they need localIds
+        if id(par) not in id_of:
+            counter += 1
+            id_of[id(par)] = "n%d" % counter
 
     def shape_dict(el):
         eid = id_of[id(el)]
@@ -290,6 +297,15 @@ def to_di(diagram):
             d["targetPort"] = _port_dict(e.target_port)
         d.update(_edge_style_dict(e))
         out["edges"].append(d)
+
+    if getattr(diagram, "par_params", []):
+        out["parParams"] = [{"localId": id_of.get(id(p)),
+                             "name": p.name, "side": p.side,
+                             "offset": p.offset,
+                             "owner": [i for i, n in enumerate(diagram.nodes)
+                                       if n is p.owner][0] if p.owner else None,
+                             "bounds": [p.x, p.y, p.w, p.h]}
+                            for p in diagram.par_params]
 
     if diagram.frame is not None:
         fr = diagram.frame
@@ -408,7 +424,12 @@ def _shape_xml(sd, indent):
     """One DI::Shape element (recursive over ownedElement)."""
     eid = sd["localId"]
     kind = sd.get(_DD_KIND, "Node")
-    lines = ['%s<di:Shape xmi:id="%s" ddKind="%s">' % (indent, eid, kind)]
+    sattrs = ['ddKind="%s"' % kind]
+    if sd.get("rounded"):
+        sattrs.append('rounded="true"')
+    if sd.get("dashed"):
+        sattrs.append('dashed="true"')
+    lines = ['%s<di:Shape xmi:id="%s" %s>' % (indent, eid, " ".join(sattrs))]
     lines.append(_bounds_xml(sd.get("bounds") or [0, 0, 0, 0], indent + "  "))
     name = sd.get("name")
     if name is not None:
@@ -473,6 +494,10 @@ def _parse_shape_element(el):
     """Parse one di:Shape XML element into a DI payload dict."""
     sd = {"xmiType": "DI:Shape", "localId": _xmi_id(el),
           _DD_KIND: el.get("ddKind", "Node")}
+    if el.get("rounded") == "true":
+        sd["rounded"] = True
+    if el.get("dashed") == "true":
+        sd["dashed"] = True
     b = el.find("bounds")
     if b is not None:
         sd["bounds"] = [float(b.get("x", 0)), float(b.get("y", 0)),
@@ -572,6 +597,8 @@ def to_di_xmi(payload, name="Diagram"):
         lines = ['    <di:Edge xmi:id="%s" source="%s" target="%s"%s>'
                  % (ed["localId"], ed.get("source"), ed.get("target"),
                     (" " + " ".join(eattrs)) if eattrs else "")]
+        if ed.get("binding"):
+            lines[-1] = lines[-1][:-1] + ' binding="true">'
         for x, y in ed.get("waypoint", []):
             lines.append(_point_xml(x, y, "      "))
         label = ed.get("label")
@@ -676,6 +703,14 @@ def to_di_xmi(payload, name="Diagram"):
                 gattrs.append('guard="%s"' % _xml_escape(guard))
             out.append('      <operand %s/>' % " ".join(gattrs))
         out.append('    </di:SeqFragment>')
+    for pp in payload.get("parParams", []):
+        pattrs = ['localId="%s"' % pp.get("localId", ""),
+                  'name="%s"' % _xml_escape(pp.get("name", "")),
+                  'side="%s"' % pp.get("side", "left"),
+                  'offset="%g"' % pp.get("offset", 0.5)]
+        if pp.get("owner") is not None:
+            pattrs.append('owner="%d"' % pp["owner"])
+        out.append('    <di:ParParam %s/>' % " ".join(pattrs))
     for ce in payload.get("sequenceConstraints", []):
         cattrs = ['li="%d"' % ce.get("li", 0),
                   'y="%g"' % ce.get("y", 0),
@@ -824,6 +859,22 @@ def from_di(payload):
                     return fp
         return _port_from_dict(pd, ref)
 
+    # Parametric constraint parameters (§9.6) — restore before edges so
+    # binding endpoints resolve by localId
+    for pd in payload.get("parParams", []):
+        oi = pd.get("owner")
+        owner = None
+        if oi is not None and 0 <= int(oi) < len(d.nodes):
+            owner = d.nodes[int(oi)]
+        p = ParParam(pd.get("name", ""), side=pd.get("side", "left"),
+                     offset=pd.get("offset", 0.5), owner=owner)
+        b = pd.get("bounds") or [0, 0, 8, 8]
+        p.x, p.y, p.w, p.h = b
+        p.placed = bool(b[2] and b[3])
+        d.par_params.append(p)
+        if pd.get("localId"):
+            by_local[pd["localId"]] = p
+
     # Edges — DI::Edge
     for ed in payload.get("edges", []):
         s = by_local.get(ed.get("source"))
@@ -840,6 +891,7 @@ def from_di(payload):
                  item_flow=ed.get("itemFlow"),
                  item_position=ed.get("itemPosition", 0.5))
         e.waypoints = [tuple(w) for w in ed.get("waypoint", [])]
+        e.is_binding = bool(ed.get("binding"))
         sp = ed.get("sourcePort")
         if sp:
             e.source_port = _edge_port(sp, s)
@@ -939,6 +991,8 @@ def from_di_xmi(xml_text):
         ts = el.get("targetStyle")
         if ts:
             d["targetStyle"] = ts
+        if el.get("binding") == "true":
+            d["binding"] = True
         sl = el.find("sourceLabel")
         if sl is not None:
             d["sourceLabel"] = sl.text or ""
@@ -981,6 +1035,15 @@ def from_di_xmi(xml_text):
         if ports:
             fd["ports"] = ports
         sd["diagramFrame"] = fd
+
+    for ppel in diagram.findall("%sParParam" % di_tag):
+        pd = {"localId": str(ppel.get("localId", "")),
+              "name": str(ppel.get("name", "")),
+              "side": str(ppel.get("side", "left")),
+              "offset": float(ppel.get("offset", 0.5))}
+        if ppel.get("owner"):
+            pd["owner"] = int(ppel.get("owner"))
+        sd.setdefault("parParams", []).append(pd)
 
     lif_els = diagram.findall("%sLifeline" % di_tag)
     for le in lif_els:

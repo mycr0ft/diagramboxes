@@ -370,6 +370,50 @@ separators with the operand's guard in square brackets below, and — for
 interaction uses — an opaque `ref` rectangle the participating lifelines
 disappear behind, with the referenced interaction's name centered inside.
 
+#### Sequence constraints and state invariants (§7.8)
+
+```python
+d.add_frame('sd', element_kind='interaction', element_name='Execute Transfer')
+fc = d.add_lifeline('fc : Flight Computer')
+
+d.seq_constraint(fc, y=14, text='{2 min .. 5 min}')   # duration float
+d.seq_exec(fc, 20, 50)
+d.seq_constraint(fc, y=24, text='{executionTime}', dx=-30)  # beside
+d.seq_constraint(fc, y=38, text='orbitSet',            # state invariant:
+                 state_notation=True)                  # round-cornered
+```
+
+Time/duration constraints float as brace text over (or, with `dx`, beside) a
+lifeline just above the bound event; state invariants render as round-cornered
+rectangles naming the state. All round-trip through DI and XMI.
+
+### 4c. Parametric diagrams (SysML v1 §9.4–9.8)
+
+Constraint properties are rounded nodes; constraint parameters are small
+squares docked on the *inside* of their owner's boundary (or on the frame
+itself when the frame represents a constraint block); value properties are
+plain rectangles; binding connectors are arrowless solid lines routed
+straight between the docked boundary points.
+
+```python
+d.add_frame('par', element_kind='constraintBlock', element_name='Hohmann Transfer')
+tos = d.par_constraint('tos', 'Transfer Orbit Size')
+ttof = d.par_constraint('ttof', 'Transfer Time of Flight',)
+
+r1_fr = d.par_param('r1', 'km', side='left', offset=0.25)   # on the frame
+r2_tos = d.par_param('r2', 'km', tos, side='right', offset=0.2)
+r3_ttof = d.par_param('r3', 'km', ttof, side='left', offset=0.4)
+d.bind(r1_fr, r2_tos)                                        # equality
+d.bind(r3_ttof, r2_tos)                                      # param ↔ param
+
+vp = d.par_value('timeOfFlight', 'min', default='452.4')     # block frames
+vp2 = d.par_value('currentOrbitRadius', 'km', mult='0..1')
+```
+
+Constraint parameters, binding flags and the rounded/`par` round-trip all
+carry through DI and XMI (`di:ParParam` elements, `binding="true"` edges,
+`rounded="true"` shapes).
+
 ### 5. Rendering to SVG
 
 ```python

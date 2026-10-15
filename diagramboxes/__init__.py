@@ -14,7 +14,8 @@ from diagramboxes.layout import Diagram, Node, Edge, Port, Comment, View, Diagra
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate, \
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate, \
     HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort, \
-    Lifeline, SeqMessage, SeqExec, SeqDestruction, SeqFragment, SeqConstraint
+    Lifeline, SeqMessage, SeqExec, SeqDestruction, SeqFragment, SeqConstraint, \
+    ParParam
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
