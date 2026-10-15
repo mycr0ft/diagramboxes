@@ -687,6 +687,10 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
             for i, row in enumerate(rows):
                 c.add_label(pos[0], base + i * 6, row,
                             anchor='start' if vert else 'middle')
+                if used_labels is not None:
+                    wrow = max(len(r) for r in rows)
+                    used_labels.add((pos[0] if vert else pos[0] - wrow,
+                                     base + i * 6, wrow * 2))
 
         # Item flow (SysML v1 §4.9): filled triangular arrowhead along the
         # connector with the item type as a halo label near it.  The halo
@@ -793,7 +797,8 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                     """Support '\n'-joined end labels (SysML v2 metamodel
                     figures stack '+/name', multiplicity, '{subsets ...}'
                     at one end): render as stacked halo rows anchored at
-                    the same x; the whole stack registers as one claim."""
+                    the same x; EVERY row registers a claim so later
+                    labels cannot sit on the stack and erase it."""
                     rows = str(label).split('\n')
                     base = pos[1] - (len(rows) - 1) * 6
                     for i, row in enumerate(rows):
@@ -801,7 +806,10 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                                     anchor='start' if vert else 'middle')
                     if used_labels is not None:
                         wrow = max(len(r) for r in rows)
-                        used_labels.add((pos[0] if vert else pos[0] - wrow, base, wrow * 2))
+                        for i in range(len(rows)):
+                            used_labels.add((pos[0] if vert
+                                             else pos[0] - wrow,
+                                             base + i * 6, wrow * 2))
 
                 if e.source_label:
                     _stacked(e.source_label, spos)
