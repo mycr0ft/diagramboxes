@@ -314,7 +314,8 @@ def to_di(diagram):
             {"kind": m.kind,
              "src": li_index[id(m.src)] if m.src is not None else -1,
              "dst": li_index[id(m.dst)] if m.dst is not None else -1,
-             "y": m.y, "label": m.label}
+             "y": m.y, "label": m.label,
+             "fromLeft": m.from_left, "toRight": m.to_right}
             for m in diagram.messages]
         out["sequenceExecSpecs"] = [
             {"li": li_index[id(s.lifeline)], "y1": s.y1, "y2": s.y2,
@@ -633,6 +634,10 @@ def to_di_xmi(payload, name="Diagram"):
                  'y="%g"' % md.get("y", 0)]
         if md.get("label"):
             attrs.append('label="%s"' % _xml_escape(md["label"]))
+        if not md.get("fromLeft", True):
+            attrs.append('fromLeft="false"')
+        if not md.get("toRight", True):
+            attrs.append('toRight="false"')
         out.append('    <di:SeqMessage %s/>' % " ".join(attrs))
     for sd_ in payload.get("sequenceExecSpecs", []):
         out.append('    <di:SeqExec li="%d" y1="%g" y2="%g"%s/>'
@@ -739,7 +744,9 @@ def from_di(payload):
             continue
         kind = md.get("kind", "async")
         d.messages.append(SeqMessage(src, dst, kind,
-                                     md.get("y", 0), md.get("label")))
+                                     md.get("y", 0), md.get("label"),
+                                     from_left=md.get("fromLeft", True),
+                                     to_right=md.get("toRight", True)))
         if kind == 'create' and dst is not None and md.get("headY") is not None:
             dst.head_y = int(md["headY"])
     for sd_ in payload.get("sequenceExecSpecs", []):
@@ -936,6 +943,8 @@ def from_di_xmi(xml_text):
                 "dst": int(me.get("dst", 0)),
                 "y": float(me.get("y", 0)),
                 "label": str(me.get("label")) if me.get("label") else None,
+                "fromLeft": me.get("fromLeft", "true") != "false",
+                "toRight": me.get("toRight", "true") != "false",
             })
         for se in diagram.findall("%sSeqExec" % di_tag):
             sd.setdefault("sequenceExecSpecs", []).append({

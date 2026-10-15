@@ -187,12 +187,15 @@ class SeqMessage:
     lifeline's head), 'delete' (ends in a destruction occurrence).
     Horizontal at row ``y``."""
 
-    def __init__(self, src, dst, kind, y, label=None):
+    def __init__(self, src, dst, kind, y, label=None,
+                 from_left=True, to_right=True):
         self.src = src
         self.dst = dst
         self.kind = kind
         self.y = y
         self.label = label
+        self.from_left = from_left    # found messages: enter from the left
+        self.to_right = to_right      # lost messages: leave to the right
         self.x1 = 0
         self.x2 = 0
 
@@ -1057,8 +1060,10 @@ class Diagram:
         self.lifelines.append(li)
         return li
 
-    def _seq_message(self, src, dst, kind, y, label):
-        m = SeqMessage(src, dst, kind, y, label)
+    def _seq_message(self, src, dst, kind, y, label, from_left=True,
+                     to_right=True):
+        m = SeqMessage(src, dst, kind, y, label,
+                       from_left=from_left, to_right=to_right)
         if kind == 'create':
             dst.head_y = y   # arrowhead lands at the created lifeline's head
             dst.created = True
@@ -1080,15 +1085,19 @@ class Diagram:
         the performing lifeline back to the invoker."""
         return self._seq_message(src, dst, 'reply', y, label)
 
-    def seq_found(self, dst, y, label=None, kind='sync'):
+    def seq_found(self, dst, y, label=None, kind='sync', from_left=True):
         """Found message (§7.5): the sender is outside the diagram —
-        the arrow departs from a point mid-air to the receiver."""
-        return self._seq_message(None, dst, kind, y, label)
+        the arrow departs mid-air (or at the frame border when the
+        diagram is framed) into the receiver."""
+        return self._seq_message(None, dst, kind, y, label,
+                                 from_left=from_left)
 
-    def seq_lost(self, src, y, label=None, kind='reply'):
+    def seq_lost(self, src, y, label=None, kind='reply', to_right=True):
         """Lost message (§7.5): the receiver is outside the diagram —
-        the line departs the sender and ends mid-air."""
-        return self._seq_message(src, None, kind, y, label)
+        the line departs the sender and ends mid-air (or at the frame
+        border when the diagram is framed)."""
+        return self._seq_message(src, None, kind, y, label,
+                                 to_right=to_right)
 
     def seq_create(self, src, dst, label=None, y=None):
         """Create message (§7.5.2): dashed line, open arrowhead landing
@@ -1146,18 +1155,41 @@ class Diagram:
 
     def _seq_message_endpoints(self, m):
         """(x1, x2): source-end column, arrowhead-end column. Found
-        messages start mid-air 90 units left of the receiver; lost
-        messages leave mid-air 90 units right of the sender."""
-        if m.src is None:
-            return m.dst.x - 90, m.dst.x
-        if m.dst is None:
-            return m.src.x, m.src.x + 90
+        messages start at the frame border (framed) or mid-air 90 units
+        from the receiver (unframed); lost messages mirror that."""
+        if m.src is None or m.dst is None:
+            e1, e2 = self._seq_midair_endpoints(m)
+            li = m.dst if m.dst is not None else m.src
+            if li is None:
+                return e1, e2
+            if m.src is None:
+                # dock the arrowhead on the exec-spec edge facing the
+                # incoming direction (from the left → left edge, §7.7)
+                return e1, self._event_x(li, m.y, e1 > li.x)
+            return self._event_x(li, m.y, e2 > li.x), e2
         if m.src is m.dst:
             return m.src.x, m.src.x
         to_right = m.dst.x >= m.src.x
         x_src = self._event_x(m.src, m.y, to_right)
         x_dst = self._event_x(m.dst, m.y, m.src.x >= m.dst.x)
         return x_src, x_dst
+
+    def _seq_midair_endpoints(self, m):
+        """(e1, e2) for found/lost messages: at the frame border when the
+        diagram is framed, else 90 units out beyond the nearest
+        lifeline."""
+        fr = self._frame_rect() if self.frame is not None else None
+        if m.src is None:
+            if fr is not None:
+                return ((fr[0] + 2, m.dst.x) if m.from_left
+                        else (fr[2] - 2, m.dst.x))
+            return ((m.dst.x - 90, m.dst.x) if m.from_left
+                    else (m.dst.x + 90, m.dst.x))
+        if fr is not None:
+            return ((m.src.x, fr[2] - 2) if m.to_right
+                    else (m.src.x, fr[0] + 2))
+        return ((m.src.x, m.src.x + 90) if m.to_right
+                else (m.src.x, m.src.x - 90))
 
     def _update_seq_geometry(self):
         """Cache message endpoint columns (render-time; exec specs may
@@ -2767,7 +2799,10 @@ class Diagram:
                        self._lifeline_tail_end(li)])
         for m in self.messages:
             if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
-                xs.extend([m.x1, m.x2])
+                if self.frame is None:
+                    # framed diagrams attach mid-air ends AT the border —
+                    # counting them here would widen the frame instead
+                    xs.extend([m.x1, m.x2])
                 ys.append(m.y)
         if not xs:
             return None

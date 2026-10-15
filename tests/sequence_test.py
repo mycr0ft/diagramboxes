@@ -12,10 +12,11 @@ import re
 from diagramboxes import (Diagram, to_di, from_di, to_di_xmi, from_di_xmi)
 
 
-def _diag():
+def _diag(frame=True):
     d = Diagram()
-    d.add_frame('sd', element_kind='interaction',
-                element_name='Execute Hohmann Transfer, Main Success Scenario')
+    if frame:
+        d.add_frame('sd', element_kind='interaction',
+                    element_name='Execute Hohmann Transfer, Main Success Scenario')
     fc = d.add_lifeline('fc : Flight Computer')
     mans = d.add_lifeline('mans : MANS')
     return d, fc, mans
@@ -98,27 +99,43 @@ def test_execution_spec_attaches_message_ends():
 
 def test_found_and_lost_messages():
     """§7.5: found/lost messages — ends at the frame boundary mid-air.
-    Figure 7.10 opens with a found initializeMANS() and closes with
-    fc's reply leaving toward the frame edge."""
-    d, fc, mans = _diag()
+    Figure 7.10 opens with a found initializeMANS() (left frame border)
+    and closes with fc's reply leaving LEFTWARD to the frame border."""
+    fc = None
+    d, fc, mans = _diag(frame=False)
     fin = d.seq_found(fc, y=20, label='initializeMANS( )', kind='sync')
     fl = d.seq_lost(fc, y=40, label='initializeMANS( ) : "Ready"',
-                    kind='reply')
+                    kind='reply', to_right=False)
     d.seq_exec(fc, 20, 40)
     assert fin.src is None and fin.dst is fc
     assert fl.src is fc and fl.dst is None and fl.kind == 'reply'
     d2 = d.render_svg(routing='orthogonal')
     e = d.messages[0]
     assert e.x1 == fc.x - 90, 'found message starts mid-air left of fc'
-    assert e.x2 == fc.x, 'and docks on fc'
+    assert e.x2 == fc.x - 4, 'arrowhead docks at the exec-spec edge (§7.7)'
     f = d.messages[1]
-    assert f.x1 == fc.x, 'lost message departs from fc'
-    assert f.x2 == fc.x + 90, 'and leaves mid-air'
+    assert f.x1 == fc.x - 4, 'lost message departs at the spec edge'
+    assert f.x2 == fc.x - 90, 'leaves mid-air to the LEFT when to_right=False'
     d3 = from_di(to_di(d))
     assert d3.messages[0].src is None and d3.messages[0].dst is not None
     assert d3.messages[1].src is not None and d3.messages[1].dst is None
     d4 = from_di(from_di_xmi(to_di_xmi(to_di(d))))
     assert d4.messages[0].src is None and d4.messages[1].dst is None
+
+
+def test_found_lost_attach_to_frame_border_when_framed():
+    """Book (Figure 7.10): found/lost ends attach DIRECTLY to the frame
+    border, not float inside it."""
+    d, fc, mans = _diag()
+    d.seq_found(fc, y=20, label='initializeMANS( )', kind='sync')
+    d.seq_lost(fc, y=40, label='r', kind='reply', to_right=False)
+    svg = d.render_svg(routing='orthogonal')
+    m1, m2 = d.messages
+    fr = d._frame_rect()
+    assert fr is not None
+    x1 = fr[0]
+    assert abs(m1.x1 - (x1 + 2)) < 1, 'found line attaches at the left border'
+    assert abs(m2.x2 - (x1 + 2)) < 1, 'lost line terminates at the left border'
 
 
 def test_sequence_survives_di_and_xmi_round_trip():
