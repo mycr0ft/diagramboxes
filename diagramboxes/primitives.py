@@ -865,6 +865,36 @@ def draw_seq_message(c, x1, x2, y, kind, label):
         c.set_text((lo + hi) // 2 - len(label), int(y) - 5, label)
 
 
+# ── combined fragments / interaction uses (§7.9–7.10) ──
+
+def draw_seq_fragment(c, f, span_x):
+    """Braille approximation of the combined fragment: rectangle over
+    the participating lifelines, the operator text (with the pentagon
+    tag shape too fine for braille) at the upper-left, dashed operand
+    separators with guards below, and the interaction-use name centred.
+    The opaque ref fill is an SVG-only nicety."""
+    lo, hi = int(span_x[0]), int(span_x[1])
+    y1, y2 = int(f.y1), int(f.y2)
+    for rx, ry in line(lo, y1, hi, y1):
+        c.set(rx, ry)
+    for rx, ry in line(hi, y1, hi, y2):
+        c.set(rx, ry)
+    for rx, ry in line(hi, y2, lo, y2):
+        c.set(rx, ry)
+    for rx, ry in line(lo, y2, lo, y1):
+        c.set(rx, ry)
+    pent = f.operator + ((' %s' % f.frag_range) if f.frag_range else '')
+    c.set_text(lo + 2, y1 + 3, pent)
+    if f.is_ref and f.name:
+        c.set_text((lo + hi) // 2 - len(f.name) // 2, (y1 + y2) // 2, f.name)
+    if f.guard:
+        c.set_text(lo + 4, y1 + 9, '[%s]' % f.guard)
+    for row, guard in f.operands:
+        draw_line(c, lo, int(row), hi, int(row), DASHED)
+        if guard:
+            c.set_text(lo + 4, int(row) + 4, '[%s]' % guard)
+
+
 # ── activity node drawing ──
 
 def draw_start_node(c, cx, cy, r):

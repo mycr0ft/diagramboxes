@@ -70,7 +70,7 @@ from diagramboxes.layout import (
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate,
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate,
     HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort, \
-    Lifeline, SeqMessage, SeqExec, SeqDestruction,
+    Lifeline, SeqMessage, SeqExec, SeqDestruction, SeqFragment,
 )
 
 __all__ = ["to_di", "from_di", "DI_VERSION", "DI_NS", "DC_NS", "DG_NS"]
@@ -323,6 +323,12 @@ def to_di(diagram):
         out["sequenceDestructions"] = [
             {"li": li_index[id(x.lifeline)], "y": x.y}
             for x in diagram.destructions]
+        out["sequenceFragments"] = [
+            {"operator": f.operator, "range": f.frag_range,
+             "guard": f.guard, "name": f.name, "y1": f.y1, "y2": f.y2,
+             "li": [li_index[id(li)] for li in f.lifelines],
+             "operands": [[row, g] for row, g in f.operands]}
+            for f in diagram.fragments]
     return out
 
 
@@ -646,6 +652,25 @@ def to_di_xmi(payload, name="Diagram"):
     for dd in payload.get("sequenceDestructions", []):
         out.append('    <di:SeqDestruction li="%d" y="%g"/>'
                    % (dd.get("li", 0), dd.get("y", 0)))
+    for fd_ in payload.get("sequenceFragments", []):
+        liids = " ".join(str(i) for i in fd_.get("li", []))
+        fattrs = ['operator="%s"' % fd_.get("operator", "opt"),
+                  'y1="%g"' % fd_.get("y1", 0),
+                  'y2="%g"' % fd_.get("y2", 0),
+                  'lifelines="%s"' % liids]
+        if fd_.get("range"):
+            fattrs.append('range="%s"' % _xml_escape(fd_["range"]))
+        if fd_.get("guard"):
+            fattrs.append('guard="%s"' % _xml_escape(fd_["guard"]))
+        if fd_.get("name"):
+            fattrs.append('name="%s"' % _xml_escape(fd_["name"]))
+        out.append('    <di:SeqFragment %s>' % " ".join(fattrs))
+        for row, guard in fd_.get("operands", []):
+            gattrs = ['y="%g"' % row]
+            if guard:
+                gattrs.append('guard="%s"' % _xml_escape(guard))
+            out.append('      <operand %s/>' % " ".join(gattrs))
+        out.append('    </di:SeqFragment>')
     out.append("  </di:Diagram>")
     out.append("</xmi:XMI>")
     return "\n".join(out)
@@ -758,6 +783,15 @@ def from_di(payload):
         i = dd.get("li", 0)
         if i < len(lis):
             d.destructions.append(SeqDestruction(lis[i], dd.get("y", 0)))
+    for fd_ in payload.get("sequenceFragments", []):
+        members = [lis[i] for i in fd_.get("li", []) if i < len(lis)]
+        if not members:
+            continue
+        d.fragments.append(SeqFragment(
+            members, fd_.get("y1", 0), fd_.get("y2", 0),
+            fd_.get("operator", 'opt'), guard=fd_.get("guard"),
+            operands=fd_.get("operands"), name=fd_.get("name"),
+            frag_range=fd_.get("range")))
 
     def _edge_port(pd, ref):
         """Rebuild an edge-anchored port. FramePort references bind to the
@@ -958,4 +992,21 @@ def from_di_xmi(xml_text):
                 "li": int(de.get("li", 0)),
                 "y": float(de.get("y", 0)),
             })
+        for fe in diagram.findall("%sSeqFragment" % di_tag):
+            fds = {"operator": str(fe.get("operator", "opt")),
+                   "y1": float(fe.get("y1", 0)),
+                   "y2": float(fe.get("y2", 0)),
+                   "li": [int(v) for v in (fe.get("lifelines") or "").split()],
+                   "operands": []}
+            if fe.get("range"):
+                fds["range"] = str(fe.get("range"))
+            if fe.get("guard"):
+                fds["guard"] = str(fe.get("guard"))
+            if fe.get("name"):
+                fds["name"] = str(fe.get("name"))
+            for op in fe.findall("operand"):
+                fds["operands"].append(
+                    [float(op.get("y", 0)), str(op.get("guard"))]
+                    if op.get("guard") else [float(op.get("y", 0)), None])
+            sd.setdefault("sequenceFragments", []).append(fds)
     return sd

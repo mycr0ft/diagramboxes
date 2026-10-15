@@ -412,6 +412,40 @@ def svg_seq_self_message(c, x, y, kind, label):
         c.add_label(x + 33, y + 3, label, anchor='start')
 
 
+# ── combined fragments / interaction uses (§7.9–7.10) ──
+
+def svg_seq_fragment(c, f, span_x):
+    """Rectangle over the participating lifelines (§7.9); a pentagon in
+    the upper-left corner holds the interaction operator (+ range for
+    loops). Interaction uses (operator 'ref') paint the rectangle
+    opaque — the lifelines disappear behind it — and center the
+    referenced interaction's name inside. Operand separator rows draw
+    as dashed lines with that operand's guard below them."""
+    lo, hi = span_x
+    if f.is_ref:
+        c.add_rect(lo, f.y1, hi - lo, f.y2 - f.y1, fill='white')
+    else:
+        c.add_rect(lo, f.y1, hi - lo, f.y2 - f.y1)
+    pent = f.operator + ((' %s' % f.frag_range) if f.frag_range else '')
+    pw = len(pent) * 2 + 6
+    c.add_polygon([
+        (lo, f.y1), (lo + pw + 3, f.y1), (lo + pw, f.y1 + 3),
+        (lo + pw, f.y1 + 7), (lo, f.y1 + 7),
+    ], fill='white', stroke=c.STROKE)
+    c.add_text(lo + 2, f.y1 + 6, pent, anchor='start')
+    if f.is_ref and f.name:
+        c.add_text((lo + hi) / 2, (f.y1 + f.y2) / 2 + 2, f.name,
+                   anchor='middle')
+    if f.guard:
+        g = '[%s]' % f.guard
+        c.add_label(lo + 4, f.y1 + 13, g, anchor='start')
+    for row, guard in f.operands:
+        c.add_line(lo, row, hi, row, dashed=True)
+        if guard:
+            g = '[%s]' % guard
+            c.add_label(lo + 4, row + 9, g, anchor='start')
+
+
 # ── High-level drawing functions for diagrams ──
 
 def svg_draw_edge(c, e, keep_away=None, used_labels=None):

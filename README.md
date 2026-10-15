@@ -353,6 +353,23 @@ covers the row (§7.7); self-messages draw as a small loop with the name
 beside the arrowhead. Lifelines, messages, exec specs and destruction
 occurrences all round-trip through DI and XMI.
 
+#### Combined fragments and interaction uses (§7.9–7.10)
+
+```python
+d.seq_fragment([fc, mans], y1=40, y2=90, operator='opt',
+               guard='isCommandValid == True')
+d.seq_fragment([fc, mans], y1=40, y2=140, operator='alt',
+               guard='sensorStatus == True',
+               operands=[(100, 'sensorStatus == True'), (130, 'else')])
+d.seq_fragment([fc, mans], y1=40, y2=120, operator='loop', range='(2, *)')
+d.seq_ref([fc, mans], y1=40, y2=80, name='Bring MANS Hardware Online')
+```
+
+Each fragment draws the operator in the upper-left pentagon, dashed operand
+separators with the operand's guard in square brackets below, and — for
+interaction uses — an opaque `ref` rectangle the participating lifelines
+disappear behind, with the referenced interaction's name centered inside.
+
 ### 5. Rendering to SVG
 
 ```python

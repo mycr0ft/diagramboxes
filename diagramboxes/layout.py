@@ -35,13 +35,14 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     SOLID, DASHED, OPEN, NONE, FILLED, DIAMOND, TRIANGLE, CIRCLE, UNOWNED, CIRCLED_PLUS, PORT_W, PORT_H, \
     INT_STICK, INT_BALL_R, INT_STACK, _OUTWARD, _is_folder, \
     draw_seq_head, draw_seq_exec, draw_seq_message, draw_destruction_x, \
+    draw_seq_fragment, \
     draw_line, draw_arrowhead
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
     svg_draw_history_node, svg_draw_entry_exit_point, svg_draw_frame, \
     svg_seq_head, svg_seq_exec, svg_seq_message, svg_seq_self_message, \
-    svg_seq_destruction, \
+    svg_seq_destruction, svg_seq_fragment, \
     svg_draw_interface
 
 _MIN_PORT_SPACING = 8
@@ -229,6 +230,34 @@ class SeqDestruction:
     def __init__(self, lifeline, y):
         self.lifeline = lifeline
         self.y = y
+
+
+class SeqFragment:
+    """A combined fragment or interaction use (§7.9–7.10): a rectangle
+    over the participating lifelines with a pentagon in the upper-left
+    holding the interaction operator. ``operator='ref'`` + ``name`` = an
+    interaction use invoking a lower-level interaction. ``operands`` are
+    (row, guard-string) pairs: dashed separators at each row, guard
+    printed below it."""
+
+    def __init__(self, lifelines, y1, y2, operator, guard=None,
+                 operands=None, name=None, frag_range=None):
+        self.lifelines = list(lifelines)
+        self.y1 = y1
+        self.y2 = y2
+        self.operator = operator
+        self.frag_range = frag_range      # e.g. '(2, *)' or None
+        self.guard = guard
+        self.operands = [tuple(o) for o in (operands or [])]
+        self.name = name                  # interaction use's referenced name
+
+    @property
+    def is_ref(self):
+        return self.operator == 'ref'
+
+    def __repr__(self):
+        return 'SeqFragment(%r y=%s..%s over %d lifelines)' % (
+            self.operator, self.y1, self.y2, len(self.lifelines))
 
 
 class FramePort(Port):
@@ -1041,6 +1070,7 @@ class Diagram:
         self.messages = []     # SeqMessages (§7.5)
         self.exec_specs = []   # SeqExec execution specifications (§7.7)
         self.destructions = []  # SeqDestruction occurrences (§7.6)
+        self.fragments = []    # SeqFragments / interaction uses (§7.9-7.10)
 
     # ── sequence-diagram construction (§7.4–7.7) ──
 
@@ -1127,6 +1157,34 @@ class Diagram:
         s = SeqExec(lifeline, y1, y2, shaded)
         self.exec_specs.append(s)
         return s
+
+    def seq_fragment(self, lifelines, y1, y2, operator, guard=None,
+                     operands=None, range=None, frag_range=None):
+        """Combined fragment (§7.9): a rectangle over ``lifelines`` with
+        the interaction operator in the upper-left pentagon.
+        ``range`` (e.g. '(2, *)') joins the operator for loops;
+        ``guard`` = the first operand's Boolean expression; ``operands``
+        = (row, guard) pairs — dashed separator lines at each row with
+        that operand's guard below it. Guards display in square
+        brackets; keep alt guards mutually exclusive (§7.9.2)."""
+        f = SeqFragment(lifelines, y1, y2, operator, guard=guard,
+                        operands=operands,
+                        frag_range=range or frag_range)
+        self.fragments.append(f)
+        return f
+
+    def seq_ref(self, lifelines, y1, y2, name):
+        """Interaction use (§7.10): a `ref` pentagon rectangle over the
+        participating lifelines invoking the named lower-level
+        interaction; the lifelines disappear behind it."""
+        f = SeqFragment(lifelines, y1, y2, 'ref', name=name)
+        self.fragments.append(f)
+        return f
+
+    def _fragment_span_x(self, f):
+        lo = min(li.x for li in f.lifelines) - 10
+        hi = max(li.x for li in f.lifelines) + 10
+        return lo, hi
 
     def _lifeline_edge_x(self, li, y):
         """Where a message end at row ``y`` attaches on ``li``: the
@@ -2804,6 +2862,10 @@ class Diagram:
                     # counting them here would widen the frame instead
                     xs.extend([m.x1, m.x2])
                 ys.append(m.y)
+        for f in self.fragments:
+            lo, hi = self._fragment_span_x(f)
+            xs.extend([lo, hi])
+            ys.extend([f.y1, f.y2])
         if not xs:
             return None
         return min(xs), min(ys), max(xs), max(ys)
@@ -3041,6 +3103,8 @@ class Diagram:
                 draw_seq_message(c, m.x1, m.x2, m.y, m.kind, m.label)
         for x in self.destructions:
             draw_destruction_x(c, x.lifeline.x, x.y)
+        for f in self.fragments:
+            draw_seq_fragment(c, f, self._fragment_span_x(f))
         # Composite-internal edges (v0.4.0) — after boxes, so they land in
         # the open interior between sibling child boxes.
         for e in self.edges:
@@ -3136,6 +3200,10 @@ class Diagram:
             if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
                 xs.extend([m.x1, m.x2])
                 ys.append(m.y)
+        for f in self.fragments:
+            lo, hi = self._fragment_span_x(f)
+            xs.extend([lo, hi])
+            ys.extend([f.y1, f.y2])
 
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
@@ -3316,6 +3384,8 @@ class Diagram:
                 svg_seq_message(c, m.x1, m.x2, m.y, m.kind, m.label)
         for x in self.destructions:
             svg_seq_destruction(c, x.lifeline.x, x.y)
+        for f in self.fragments:
+            svg_seq_fragment(c, f, self._fragment_span_x(f))
 
         return c.output(width=w, height=h, padding=pad * scale,
                         origin=(min_x * scale, min_y * scale))
