@@ -442,7 +442,9 @@ def svg_seq_fragment(c, f, span_x):
                    anchor='middle')
     if f.guard:
         g = '[%s]' % f.guard
-        c.add_label(lo + 4, f.y1 + 13, g, anchor='start')
+        # on a lifeline directly above the first enclosed event (§7.9.1):
+        # keep the halo clear of the arrowhead zone below
+        c.add_label(lo + 4, f.y1 + 9, g, anchor='start')
     for row, guard in f.operands:
         c.add_line(lo, row, hi, row, dashed=True)
         if guard:

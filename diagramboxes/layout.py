@@ -1271,20 +1271,29 @@ class Diagram:
 
     def _seq_midair_endpoints(self, m):
         """(e1, e2) for found/lost messages: flush at the frame border
-        when the diagram is framed and ``attach`` unset (the book's
-        strokes overlap the border column); ``attach=False`` forces a
-        floating mid-air end 90 units out (excerpt-crop style)."""
+        when framed and ``attach`` unset; ``attach=False`` crops the end
+        JUST OUTSIDE the border (excerpt-crop style) when framed, else
+        90 units out beyond the nearest lifeline."""
         framed = self.frame is not None and m.attach is not False
-        fr = self._frame_rect() if framed else None
+        floating_framed = self.frame is not None and m.attach is False
+        fr = self._frame_rect() if (framed or floating_framed) else None
+        crop = 12 if floating_framed else 0
+        left_b = right_b = None
+        if fr is not None:
+            left_b, right_b = fr[0], fr[2]
         if m.src is None:
-            if fr is not None:
-                return ((fr[0], m.dst.x) if m.from_left
-                        else (fr[2], m.dst.x))
+            if left_b is not None and not floating_framed:
+                return (left_b, m.dst.x) if m.from_left else (right_b, m.dst.x)
+            if floating_framed:
+                return (((left_b or 0) - crop, m.dst.x) if m.from_left
+                        else ((right_b or 0) + crop, m.dst.x))
             return ((m.dst.x - 90, m.dst.x) if m.from_left
                     else (m.dst.x + 90, m.dst.x))
-        if fr is not None:
-            return ((m.src.x, fr[2]) if m.to_right
-                    else (m.src.x, fr[0]))
+        if left_b is not None and not floating_framed:
+            return (m.src.x, right_b) if m.to_right else (m.src.x, left_b)
+        if floating_framed:
+            return ((m.src.x, (right_b or 0) + crop) if m.to_right
+                    else (m.src.x, (left_b or 0) - crop))
         return ((m.src.x, m.src.x + 90) if m.to_right
                 else (m.src.x, m.src.x - 90))
 
