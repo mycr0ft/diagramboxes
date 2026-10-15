@@ -446,6 +446,28 @@ Use cases, actors and the boundary round-trip DI/XMI as their own
 `ddKind`s (`UseCase`, `Actor` with `stickFigure`); «include»/«extend»
 round-trip through the edge label.
 
+### 4e. Fixed-position pins (v0.14.4): reproducing reference figures
+
+```python
+from diagramboxes import Diagram
+d = Diagram()
+a = d.add_node('Definition', at=(67, 70))
+b = d.add_node('PartUsage', at=(455, 70))
+d.add_edge(b, a, source_label='0..*',
+           target_label='+/partOwningDefinition')
+d.render_svg()
+```
+
+When EVERY node carries an `at` hint the renderer honors those
+coordinates directly and routes the edges as orthogonal channels
+between the pinned boxes (facing sides: vertical sides within a row,
+top/bottom sides between rows). Partial pinning falls back to
+auto-layout, so mixed diagrams are unaffected. This is the mechanism
+behind `sysml-v2-repro/fig2diagram.py`, which converts the SysML v2
+release metamodel SVGs (`doc/images/sysml/*.svg`) into pinned
+diagramboxes renders — the ladder-family figures verified 10/10 and
+9/10 under gemma vision scoring.
+
 ### 5. Rendering to SVG
 
 ```python

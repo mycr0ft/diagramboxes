@@ -395,7 +395,7 @@ class Node:
     """
 
     def __init__(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
-                 compartments=None):
+                 compartments=None, at=None):
         self.name = name
         self.stereotypes = stereotypes or []
         self.attributes = attributes or []
@@ -409,6 +409,9 @@ class Node:
         self.parent = None
         self.children = []
         self.x = self.y = self.w = self.h = 0
+        # fixed-position hint (reproduction pin): honored by layout()
+        # only when EVERY top-level node carries one
+        self.at = tuple(at) if at is not None else None
         self._calc_size()
 
     def _calc_size(self):
@@ -1590,7 +1593,7 @@ class Diagram:
         return e
 
     def add_node(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
-                 parent=None, compartments=None):
+                 parent=None, compartments=None, at=None):
         """Create a new node and register it with the diagram.
 
         Parameters
@@ -1616,7 +1619,7 @@ class Diagram:
             The newly created node.
         """
         n = Node(name, stereotypes, attributes, rounded, dashed,
-                 compartments)
+                 compartments, at=at)
         if parent is not None:
             parent.add_child(n)
         self.nodes.append(n)
@@ -2744,6 +2747,83 @@ class Diagram:
         e.waypoints = [(sx, sy), (tx, ty)]
         return True
 
+    def _all_pinned(self):
+        """True when every node carries a fixed-position hint — the pin
+        mode engages only for fully-pinned diagrams."""
+        if not self.nodes:
+            return False
+        return all(getattr(n, 'at', None) is not None for n in self.nodes)
+
+    def _route_pinned(self):
+        """Pin mode: nodes sit at their hints; edges route as orthogonal
+        channels between the pinned boxes, anchors on the facing sides
+        of each pair (horizontal rows on the vertical sides, vertical
+        ladders on the horizontal sides)."""
+        for n in self.nodes:
+            # hints are pin coordinates; round to ints — the braille
+            # renderer loops over pixel ranges
+            n.x, n.y = int(round(n.at[0])), int(round(n.at[1]))
+        self._update_port_positions()
+        for e in self.edges:
+            if self._is_visual_containment(e):
+                continue
+            if getattr(e, '_nested_internal', False):
+                continue
+            self._route_pinned_edge(e)
+
+    def _route_pinned_edge(self, e):
+        s, t = e.source, e.target
+        obstacles = [n for n in self.nodes if n not in (s, t)]
+
+        def _clear(segs):
+            return all(not self._segment_hits(
+                x1, y1, x2, y2, obstacles)[0] for x1, y1, x2, y2 in segs)
+
+        if abs(s.cy - t.cy) < max(s.h, t.h) and abs(s.cx - t.cx) > 40:
+            # same row — anchor the facing vertical sides
+            if s.cx < t.cx:
+                sx, sy, tx, ty = s.x + s.w, s.cy, t.x, t.cy
+            else:
+                sx, sy, tx, ty = s.x, s.cy, t.x + t.w, t.cy
+            base = (sy + ty) // 2
+            channel, picked = None, False
+            if base == sy:
+                channel, picked = sy, True   # straight across the row
+            for off in range(1, int(abs(s.cx - t.cx)) // 3 + 2):
+                for cy2 in (base - off * 3, base + off * 3):
+                    if _clear([(sx, sy, tx, cy2), (tx, cy2, tx, ty)]):
+                        channel, picked = cy2, True
+                        break
+                if picked:
+                    break
+            e.route((sx, sy), (tx, base if channel is None else channel),
+                    (tx, ty))
+        else:
+            # vertical ladder — anchor the facing top/bottom sides
+            if s.cy < t.cy:
+                sx, sy = s.cx, s.y + s.h
+                tx, ty = t.cx, t.y
+            else:
+                sx, sy = s.cx, s.y
+                tx, ty = t.cx, t.y + t.h
+            if abs(sx - tx) <= 12:
+                e.route((sx, sy), (tx, ty))   # aligned: direct
+                return
+            base = (sx + tx) // 2
+            channel, picked = None, False
+            for off in range(0, int(abs(sx - tx)) // 3 + 2):
+                for cx2 in ([base] if off == 0 else
+                            [base - off * 3, base + off * 3]):
+                    if _clear([(sx, sy, cx2, sy), (cx2, sy, cx2, ty),
+                               (cx2, ty, tx, ty)]):
+                        channel, picked = cx2, True
+                        break
+                if picked:
+                    break
+            if not picked:
+                channel = base
+            e.route((sx, sy), (channel, sy), (channel, ty), (tx, ty))
+
     def _route_orthogonal(self, e, layer_of, layers, gap_used=None):
         if e.source_port and e.target_port:
             self._port_route(e)
@@ -2948,6 +3028,14 @@ class Diagram:
         # edges to composite boundaries before any engine runs.
         self._size_nested_tree()
         self._reanchor_nested_edges()
+
+        # Fixed-position pins (v0.14.4): when every node carries an `at`
+        # hint, the whole diagram is placed at those coordinates and the
+        # edges route as orthogonal channels between the pinned boxes —
+        # metamodel/figure reproduction mode.
+        if self._all_pinned():
+            self._route_pinned()
+            return
 
         if routing == 'sugiyama':
             self._route_sugiyama(node_gap, margin)
