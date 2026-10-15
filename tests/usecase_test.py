@@ -133,3 +133,25 @@ def test_usecase_round_trips_di_and_xmi():
         assert len(rel) == 1 and rel[0].line_style == DASHED
         d2.render()
         assert '«include»' in d2.render()
+
+def test_cross_boundary_associations_keep_their_ends():
+    """§5.8: an actor's association line ends ON the use case ellipse —
+    composite re-anchoring (IBD convention) must not retarget it to the
+    boundary rectangle."""
+    d = Diagram()
+    sb = d.subject('DellSat-77 Satellite')
+    uc = sb.add_child(d.usecase('Execute Hohmann transfer'))
+    fc = d.actor('Flight Controller')
+    e = d.association(fc, uc)
+    d.reanchor_nested = False
+    d.render()
+    assert e.target is uc, 'association must reach the ellipse itself'
+    assert e.waypoints[-1][0] is not None
+    d2 = Diagram()
+    part = d2.add_node('part')
+    child = d2.add_node('inner')
+    part.add_child(child)
+    port_n = d2.add_node('external')
+    e2 = d2.add_edge(port_n, child)
+    d2.render()                 # default: IBD-style re-anchor stays
+    assert e2.target is part

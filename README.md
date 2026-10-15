@@ -421,8 +421,11 @@ Socket labels print just above the connector leg, inside the frame.
 ### 4d. Use case diagrams (SysML v1 §5.4–5.11)
 
 Use case ellipses take the verb-phrase name inside; actors draw as stick
-figures with the name beneath (or as «actor» keyword rectangles); the
-system boundary nests its use cases as composite children.
+figures with the name beneath as a deferred halo label (the association
+lines anchor on the figures' sides, never the bottom where the name
+hangs); the system boundary nests its use cases as composite children.
+Set `d.reanchor_nested = False` so associations reaching into the
+boundary touch the ellipses themselves (§5.8), not the boundary rect.
 
 ```python
 d.add_frame('uc', element_kind='package', element_name='Behavior')

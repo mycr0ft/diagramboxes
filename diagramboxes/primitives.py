@@ -1164,7 +1164,9 @@ def draw_actor_stick(c, n):
         c.set(px, py)
     for px, py in line(cx, hy + 10, cx + 4, hy + 16):
         c.set(px, py)
-    c.set_text(int(cx - len(n.name) // 2), n.y + 17, n.name)
+    # the name hangs BELOW the node box (edges anchor on the box; the
+    # label band outside it never gets a line through it)
+    c.set_text(int(cx - len(n.name) // 2), n.y + 18, n.name)
 
 
 def draw_diagram_frame(c, x1, y1, x2, y2, header):

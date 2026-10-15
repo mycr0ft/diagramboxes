@@ -462,7 +462,9 @@ def svg_usecase_node(c, n):
 
 def svg_actor_stick(c, n):
     """Actor stick figure (§5.7, Figure 5.1): head circle, body, arms,
-    legs — the name printed beneath."""
+    legs. The name does NOT draw here — association lines route to the
+    figure after the nodes, so the label defers (with a halo) to after
+    the edges (render_svg's deferred_actor_labels)."""
     cx = n.x + n.w / 2.0
     hy = n.y + 3.0
     c.add_group()
@@ -472,7 +474,6 @@ def svg_actor_stick(c, n):
     c.add_polyline([(cx, hy + 11), (cx - 4.5, hy + 17)])
     c.add_polyline([(cx, hy + 11), (cx + 4.5, hy + 17)])
     c.close_group()
-    c.add_text(cx, n.y + 20, n.name, anchor='middle')
 
 
 def svg_seq_fragment(c, f, span_x):

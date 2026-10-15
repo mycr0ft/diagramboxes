@@ -547,7 +547,9 @@ class Actor(Node):
             super()._calc_size()
             return
         self.w = max(16, len(self.name) * 2 + 2)
-        self.h = 22      # figure rows ~16 + the name beneath
+        self.h = 16      # the figure only; the name hangs BELOW the box
+                         # (its halo band must stay clear of the edges
+                         # that anchor at this node's boundary)
 
 
 class Comment:
@@ -1162,6 +1164,10 @@ class Diagram:
         self.frame_ports = []  # FramePorts straddling the frame border (§4.8)
         self.par_params = []  # constraint-parameter squares (§9.6)
         self.frame_pad = 0    # extra inset between the border and content
+        # Composite re-anchoring (IBD convention): opt out for use case
+        # diagrams, where an actor's association must reach the ellipse
+        # (§5.8), not the boundary rectangle
+        self.reanchor_nested = True
         self.lifelines = []    # sequence participants (§7.4)
         self.messages = []     # SeqMessages (§7.5)
         self.exec_specs = []   # SeqExec execution specifications (§7.7)
@@ -2255,6 +2261,9 @@ class Diagram:
     def _reanchor_nested_edges(self):
         """Pre-pass: adjust edge endpoints for composite nesting (v0.4.0).
 
+        Disabled by ``Diagram.reanchor_nested = False`` (use case
+        diagrams: associations must touch the ellipses, §5.8).
+
         - Both endpoints under the same outermost ancestor: the edge is
           internal — routed as a straight boundary-to-boundary segment
           (clipped at each child box) and marked ``_nested_internal``.
@@ -2263,6 +2272,8 @@ class Diagram:
           ``_nested_orig``) so the engine routes across the parent
           boundary, per UML composite-structure convention.
         """
+        if not getattr(self, 'reanchor_nested', True):
+            return
         desc = self._node_descendants()
         for e in self.edges:
             s, t = e.source, e.target
@@ -2403,6 +2414,14 @@ class Diagram:
 
     def _get_port(self, node, edge, is_source, layer_of):
         """Compute a distributed port position for an edge on a node."""
+        if getattr(node, 'is_stick_figure', False):
+            # §5.7/Fig 5.1: associations attach on the figure's SIDE —
+            # never the bottom, where the name label hangs
+            other = edge.target if is_source else edge.source
+            dx = other.cx - node.cx
+            if dx >= 0:
+                return (node.x + node.w, node.cy)
+            return (node.x, node.cy)
         if isinstance(node, DecisionNode):
             half = node.size // 2
             if is_source:
@@ -3623,6 +3642,14 @@ class Diagram:
                     max_x = max(max_x, pos[0] + wr)
                 min_y = min(min_y, pos[1] - 4 - (len(rows) - 1) * 6)
                 max_y = max(max_y, pos[1] + 4)
+        # Canvas: stick-actor name labels hang BELOW the node box — count
+        # them (the box is the figure only)
+        for n in self.nodes:
+            if getattr(n, 'is_stick_figure', False):
+                max_y = max(max_y, n.y + n.h + 12)
+                lab_ext = len(n.name)  # half on each side of cx
+                min_x = min(min_x, n.x + n.w / 2 - lab_ext)
+                max_x = max(max_x, n.x + n.w / 2 + lab_ext)
         pad = 10
         w = int((max_x - min_x + pad * 2) * scale)
         h = int((max_y - min_y + pad * 2) * scale)
@@ -3668,12 +3695,14 @@ class Diagram:
             keep_away = all_path_px - own
         child_nodes = self._child_nodes()
         deferred_port_labels = []
+        deferred_actor_labels = []
 
         def _svg_node_tree(node):
             if isinstance(node, UseCase):
                 svg_usecase_node(c, node)
             elif isinstance(node, Actor) and node.is_stick_figure:
                 svg_actor_stick(c, node)
+                deferred_actor_labels.append(node)
             else:
                 svg_draw_node(c, node)
             for p in node.ports:
@@ -3744,6 +3773,11 @@ class Diagram:
             deferred_port_labels.append(p)
         for p in deferred_port_labels:
             svg_port_label(c, p)
+        # stick-actor names draw with halos AFTER the edges, so the
+        # association lines into the figure never strike the text
+        for a in deferred_actor_labels:
+            c.add_label(a.x + a.w / 2.0, a.y + 19, a.name,
+                        anchor='middle')
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node
