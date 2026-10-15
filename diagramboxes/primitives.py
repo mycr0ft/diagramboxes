@@ -992,6 +992,64 @@ def draw_decision_node(c, cx, cy, size, name=''):
         c.set_text(cx - len(name), cy - 2, name)
 
 
+def _poly_outline(c, pts):
+    """Connect consecutive polygon vertices with braille lines."""
+    for i in range(len(pts)):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % len(pts)]
+        for px, py in line(x1, y1, x2, y2):
+            c.set(px, py)
+
+
+def draw_send_signal_node(c, n):
+    """Convex signpost pentagon — send signal action (§6.8.3)."""
+    p = n.POINT
+    x, y, w, h = n.x, n.y, n.w, n.h
+    pts = [(x, y), (x + w - p, y), (x + w, y + h // 2),
+           (x + w - p, y + h), (x, y + h)]
+    _poly_outline(c, pts)
+    if n.name:
+        c.set_text(x + 3, y + h // 2, n.name)
+
+
+def draw_accept_event_node(c, n):
+    """Concave pentagon (rectangular, notched arrival side) — accept
+    event action (§6.8.4).  The notch bites into the left edge."""
+    q = n.NOTCH
+    x, y, w, h = n.x, n.y, n.w, n.h
+    pts = [(x, y), (x + w, y), (x + w, y + h),
+           (x, y + h), (x + q, y + h // 2)]
+    _poly_outline(c, pts)
+    if n.name:
+        c.set_text(x + q, y + h // 2, n.name)
+
+
+def draw_wait_time_node(c, n):
+    """Hourglass — wait time action (§6.8.5); the time expression
+    prints beneath the glyph."""
+    x, y, w = n.x, n.y, n.w
+    gh = n.glyph_h
+    cx, bot = x + w // 2, y + gh
+    mid_y = y + gh // 2
+    # top triangle (funnel down to center) + bottom triangle (spreads)
+    _poly_outline(c, [(x, y), (x + w, y), (cx, mid_y)])
+    _poly_outline(c, [(cx, mid_y), (x, bot), (x + w, bot)])
+    # waist crossbar at the hourglass center
+    for dx in range(-2, 3):
+        c.set(cx + dx, mid_y)
+    if n.name:
+        c.set_text(cx - len(n.name) // 2,
+                   y + gh + 3, n.name)
+
+
+def draw_rake(c, x1, y1):
+    """Call behavior rake glyph (§6.8.2): two short parallel diagonals
+    in the action's lower-right corner."""
+    for dx in (0, 2):
+        for px, py in line(x1 - 5 + dx, y1, x1 - 1 + dx, y1 - 5):
+            c.set(px, py)
+
+
 def draw_history_node(c, cx, cy, r, deep=False):
     """Draw a shallow- or deep-history pseudostate circle with an inner label.
 

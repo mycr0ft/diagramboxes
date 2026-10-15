@@ -468,6 +468,31 @@ release metamodel SVGs (`doc/images/sysml/*.svg`) into pinned
 diagramboxes renders — the ladder-family figures verified 10/10 and
 9/10 under gemma vision scoring.
 
+### 4f. Activity diagrams (SysML v1 §6.5–6.9)
+
+```python
+d = Diagram()
+st = d.add_start('Start', at=(0, 0))
+cb = d.call_behavior('ma', 'Measure altitude', at=(120, 0))   # rake + 'ma : Measure altitude'
+wt = d.add_wait_time('after (2 s)', at=(280, 0))              # hourglass (§6.8.5)
+ev = d.add_accept_event('Orbit Radius Updated', at=(280, 120))# notched pentagon (§6.8.4)
+sn = d.add_send_signal('Orbit Radius Updated', at=(120, 240)) # signpost (§6.8.3)
+fin = d.add_done('Done', at=(280, 240))                       # activity final
+d.control_flow(st, cb)                       # dashed, open arrowhead (§6.7.2)
+d.control_flow(cb, wt, guard='sample ready') # guards print as [ .. ] (§6.9.3)
+d.object_flow(wt, ev)                        # solid, open arrowhead (§6.7.1)
+d.control_flow(ev, fin)
+d.render_svg()
+```
+
+Activity control nodes: `add_start` (filled circle), `add_done`
+(activity final — bullseye), `add_terminate` (flow final — circled X),
+`add_decision` / `add_merge` (hollow diamonds), `add_fork` / `add_join`
+(synchronization bars). All accept `at=...` hints: when every node AND
+every top-level activity carries a hint, the whole diagram renders at
+those coordinates and flows route as orthogonal channels between the
+shapes (token anchors land on the glyph, not on a hanging expression).
+
 ### 5. Rendering to SVG
 
 ```python

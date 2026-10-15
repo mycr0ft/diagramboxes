@@ -38,6 +38,8 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_seq_fragment, \
     draw_seq_constraint, \
     draw_par_param, draw_usecase_node, draw_actor_stick, \
+    draw_send_signal_node, draw_accept_event_node, draw_wait_time_node, \
+    draw_rake, \
     draw_line, draw_arrowhead, edge_end_label_positions
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
@@ -47,6 +49,8 @@ from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg
     svg_par_param, \
     svg_seq_destruction, svg_seq_fragment, svg_seq_constraint, \
     svg_usecase_node, svg_actor_stick, \
+    svg_draw_send_signal_node, svg_draw_accept_event_node, \
+    svg_draw_wait_time_node, svg_draw_rake, \
     svg_draw_interface
 
 _MIN_PORT_SPACING = 8
@@ -403,6 +407,8 @@ class Node:
         self.interfaces = []   # standalone lollipop/socket symbols (no port)
         self.rounded = rounded
         self.dashed = dashed
+        # §6.8.2 call behavior action: rake glyph in the lower-right
+        self.rake = False
         self.ports = []
         # Composite-structure nesting (v0.4.0): a node may own child nodes
         # drawn *inside* its box (e.g. composite states, part assemblies).
@@ -597,13 +603,14 @@ class StartNode:
         Optional label (defaults to 'Start').
     """
 
-    def __init__(self, name='Start'):
+    def __init__(self, name='Start', at=None):
         self.name = name
         self.r = _ACTIVITY_RADIUS
         d = self.r * 2 + 2
         self.w = self.h = d
         self.x = self.y = 0
         self.parent = None  # composite-structure parent (v0.4.0)
+        self.at = tuple(at) if at is not None else None
 
     @property
     def cx(self):
@@ -626,13 +633,14 @@ class DoneNode:
         Optional label (defaults to 'Done').
     """
 
-    def __init__(self, name='Done'):
+    def __init__(self, name='Done', at=None):
         self.name = name
         self.r = _ACTIVITY_RADIUS
         d = self.r * 2 + 2
         self.w = self.h = d
         self.x = self.y = 0
         self.parent = None  # composite-structure parent (v0.4.0)
+        self.at = tuple(at) if at is not None else None
 
     @property
     def cx(self):
@@ -655,13 +663,14 @@ class TerminateNode:
         Optional label (defaults to 'Terminate').
     """
 
-    def __init__(self, name='Terminate'):
+    def __init__(self, name='Terminate', at=None):
         self.name = name
         self.r = _ACTIVITY_RADIUS
         d = self.r * 2 + 2
         self.w = self.h = d
         self.x = self.y = 0
         self.parent = None  # composite-structure parent (v0.4.0)
+        self.at = tuple(at) if at is not None else None
 
     @property
     def cx(self):
@@ -673,6 +682,98 @@ class TerminateNode:
 
     def box(self):
         return (self.x, self.y, self.x + self.w, self.y + self.h)
+
+
+class SendSignalNode:
+    """Send signal action — convex signpost pentagon (§6.8.3).
+
+    The left edge is square; the right side converges to a point in
+    the direction of the flow.  The signal name prints inside.
+    """
+
+    POINT = 14   # depth of the pointed side
+
+    def __init__(self, name='', w=56, h=26, at=None):
+        self.name = name
+        self.w = w
+        self.h = h
+        self.x = self.y = 0
+        self.parent = None
+        self.at = tuple(at) if at is not None else None
+
+    @property
+    def cx(self):
+        return self.x + self.w // 2
+
+    @property
+    def cy(self):
+        return self.y + self.h // 2
+
+    def box(self):
+        return (self.x, self.y, self.x + self.w, self.y + self.h)
+
+
+class AcceptEventNode:
+    """Accept event action — concave pentagon (§6.8.4).
+
+    A rectangle with a triangular notch cut into the arrival (left)
+    side; the signal/time-event name prints in the body.
+    """
+
+    NOTCH = 10   # how deep the notch bites in
+
+    def __init__(self, name='', w=64, h=26, at=None):
+        self.name = name
+        self.w = w
+        self.h = h
+        self.x = self.y = 0
+        self.parent = None
+        self.at = tuple(at) if at is not None else None
+
+    @property
+    def cx(self):
+        return self.x + self.w // 2
+
+    @property
+    def cy(self):
+        return self.y + self.h // 2
+
+    def box(self):
+        return (self.x, self.y, self.x + self.w, self.y + self.h)
+
+
+class WaitTimeNode:
+    """Wait time action — hourglass with the time expression beneath
+    (§6.8.5).  ``name`` holds the whole expression (``after (2 s)`` /
+    ``at (1430 GMT)``); it prints under the glyph like an actor name.
+    """
+
+    GLYPH_H = 22   # hourglass height; the expression hangs below
+
+    def __init__(self, name='', w=26, at=None):
+        self.name = name
+        self.glyph_h = self.GLYPH_H
+        self.h = self.glyph_h + 12
+        self.w = w
+        self.x = self.y = 0
+        self.parent = None
+        self.at = tuple(at) if at is not None else None
+
+    @property
+    def expr_h(self):
+        return self.h - self.glyph_h
+
+    @property
+    def cx(self):
+        return self.x + self.w // 2
+
+    @property
+    def cy(self):
+        # token anchors sit on the GLYPH, not under the expression
+        return self.y + self.glyph_h // 2
+
+    def box(self):
+        return (self.x, self.y, self.x + self.w, self.y + self.glyph_h)
 
 
 class ForkJoinNode:
@@ -688,12 +789,13 @@ class ForkJoinNode:
         Height of the bar (default 8).
     """
 
-    def __init__(self, name='', w=36, h=8):
+    def __init__(self, name='', w=36, h=8, at=None):
         self.name = name
         self.w = w
         self.h = h
         self.x = self.y = 0
         self.parent = None  # composite-structure parent (v0.4.0)
+        self.at = tuple(at) if at is not None else None
 
     @property
     def cx(self):
@@ -716,13 +818,14 @@ class DecisionNode:
         Optional label shown inside the diamond.
     """
 
-    def __init__(self, name='', size=28):
+    def __init__(self, name='', size=28, at=None):
         self.name = name
         self.size = size
         self.w = size
         self.h = size
         self.x = self.y = 0
         self.parent = None  # composite-structure parent (v0.4.0)
+        self.at = tuple(at) if at is not None else None
 
     @property
     def cx(self):
@@ -852,7 +955,7 @@ class HistoryPseudostate:
         larger than the activity start node so the H glyph fits).
     """
 
-    def __init__(self, name='', deep=False, r=8):
+    def __init__(self, name='', deep=False, r=8, at=None):
         self.name = name
         self.deep = deep
         self.r = r
@@ -860,6 +963,7 @@ class HistoryPseudostate:
         self.w = self.h = d
         self.x = self.y = 0
         self.parent = None  # composite-structure parent (v0.4.0)
+        self.at = tuple(at) if at is not None else None
 
     @property
     def cx(self):
@@ -1673,7 +1777,7 @@ class Diagram:
         self.views.append(v)
         return v
 
-    def add_start(self, name='Start', parent=None):
+    def add_start(self, name='Start', parent=None, at=None):
         """Add an activity start node (filled circle).
 
         Parameters
@@ -1685,13 +1789,13 @@ class Diagram:
         -------
         StartNode
         """
-        n = StartNode(name)
+        n = StartNode(name, at=at)
         if parent is not None:
             n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
-    def add_done(self, name='Done', parent=None):
+    def add_done(self, name='Done', parent=None, at=None):
         """Add an activity done / accept node (bullseye).
 
         Parameters
@@ -1703,13 +1807,13 @@ class Diagram:
         -------
         DoneNode
         """
-        n = DoneNode(name)
+        n = DoneNode(name, at=at)
         if parent is not None:
             n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
-    def add_terminate(self, name='Terminate', parent=None):
+    def add_terminate(self, name='Terminate', parent=None, at=None):
         """Add an activity terminate node (circle with X).
 
         Parameters
@@ -1721,13 +1825,13 @@ class Diagram:
         -------
         TerminateNode
         """
-        n = TerminateNode(name)
+        n = TerminateNode(name, at=at)
         if parent is not None:
             n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
-    def add_fork(self, name='', w=36, h=8, parent=None):
+    def add_fork(self, name='', w=36, h=8, parent=None, at=None):
         """Add an activity fork node (synchronization bar).
 
         Parameters
@@ -1743,13 +1847,13 @@ class Diagram:
         -------
         ForkJoinNode
         """
-        n = ForkJoinNode(name, w, h)
+        n = ForkJoinNode(name, w, h, at=at)
         if parent is not None:
             n.parent = parent
         self.activities.append(n)
         return n
 
-    def add_join(self, name='', w=36, h=8, parent=None):
+    def add_join(self, name='', w=36, h=8, parent=None, at=None):
         """Add an activity join node (synchronization bar).
 
         Same visual as fork — a thick bar.
@@ -1767,13 +1871,13 @@ class Diagram:
         -------
         ForkJoinNode
         """
-        n = ForkJoinNode(name, w, h)
+        n = ForkJoinNode(name, w, h, at=at)
         if parent is not None:
             n.parent = parent
         self.activities.append(n)
         return n
 
-    def add_decision(self, name='', size=28, parent=None):
+    def add_decision(self, name='', size=28, parent=None, at=None):
         """Add an activity decision node (diamond).
 
         Parameters
@@ -1789,13 +1893,98 @@ class Diagram:
         -------
         DecisionNode
         """
-        n = DecisionNode(name, size)
+        n = DecisionNode(name, size, at=at)
         if parent is not None:
             n.parent = parent
         self.activities.append(n)
         return n
 
-    def add_merge(self, name='', size=28, parent=None):
+    def add_send_signal(self, name='', w=56, h=26, parent=None, at=None):
+        """Add a send signal action — convex signpost (§6.8.3).
+
+        Parameters
+        ----------
+        name : str
+            The signal name sent by the action.
+        at : (x, y), optional
+            Fixed-position hint (pin mode places activities too).
+
+        Returns
+        -------
+        SendSignalNode
+        """
+        n = SendSignalNode(name, w, h, at=at)
+        if parent is not None:
+            n.parent = parent
+        self.activities.append(n)
+        return n
+
+    def add_accept_event(self, name='', w=64, h=26, parent=None, at=None):
+        """Add an accept event action — notched pentagon (§6.8.4).
+
+        The name is usually the signal (or time event) awaited.
+
+        Returns
+        -------
+        AcceptEventNode
+        """
+        n = AcceptEventNode(name, w, h, at=at)
+        if parent is not None:
+            n.parent = parent
+        self.activities.append(n)
+        return n
+
+    def add_wait_time(self, name='after (0 s)', parent=None, at=None):
+        """Add a wait time action — hourglass + expression beneath
+        (§6.8.5).  ``name`` is the whole time expression: ``at (...)``
+        (absolute) or ``after (...)`` (relative).
+
+        Returns
+        -------
+        WaitTimeNode
+        """
+        n = WaitTimeNode(name, at=at)
+        if parent is not None:
+            n.parent = parent
+        self.activities.append(n)
+        return n
+
+    def call_behavior(self, name, behavior, parent=None, at=None, **kw):
+        """Add a call behavior action (§6.8.2): a round-cornered node
+        named ``<name> : <Behavior>`` carrying the rake glyph.
+
+        Parameters
+        ----------
+        name : str
+            The action's verb phrase.
+        behavior : str
+            The invoked behavior's name.
+        """
+        n = self.add_node('%s : %s' % (name, behavior), parent=parent,
+                          at=at, rounded=True, **kw)
+        n.rake = True
+        return n
+
+    def object_flow(self, source, target, label=None, **kw):
+        """Object flow (§6.7.1): solid line, open arrowhead.  ``label``
+        prints on the edge (e.g. the object node's type string).
+        """
+        kw.setdefault('target_style', 'open')
+        return self.add_edge(source, target, label=label, **kw)
+
+    def control_flow(self, source, target, guard=None, **kw):
+        """Control flow (§6.7.2): dashed line, open arrowhead.  ``guard``
+        prints in square brackets (§6.9.3 decision guards) or as a plain
+        label on the control flow's leg.
+        """
+        kw.setdefault('target_style', 'open')
+        label = kw.pop('label', None)
+        if guard:
+            label = '[%s]' % guard
+        return self.add_edge(source, target, line_style='dashed',
+                             label=label, **kw)
+
+    def add_merge(self, name='', size=28, parent=None, at=None):
         """Add an activity merge node (diamond).
 
         Same visual as decision — a diamond shape.
@@ -1813,7 +2002,7 @@ class Diagram:
         -------
         DecisionNode
         """
-        n = DecisionNode(name, size)
+        n = DecisionNode(name, size, at=at)
         if parent is not None:
             n.parent = parent
         self.activities.append(n)
@@ -2750,21 +2939,33 @@ class Diagram:
         return True
 
     def _all_pinned(self):
-        """True when every node carries a fixed-position hint — the pin
-        mode engages only for fully-pinned diagrams."""
-        if not self.nodes:
+        """True when every node AND every top-level activity carries a
+        fixed-position hint — the pin mode engages only for
+        fully-pinned diagrams."""
+        top_acts = [a for a in self.activities
+                    if getattr(a, 'parent', None) is None]
+        if not self.nodes and not top_acts:
             return False
-        return all(getattr(n, 'at', None) is not None for n in self.nodes)
+        for n in self.nodes:
+            if getattr(n, 'at', None) is None:
+                return False
+        for a in top_acts:
+            if getattr(a, 'at', None) is None:
+                return False
+        return True
 
     def _route_pinned(self):
-        """Pin mode: nodes sit at their hints; edges route as orthogonal
-        channels between the pinned boxes, anchors on the facing sides
-        of each pair (horizontal rows on the vertical sides, vertical
-        ladders on the horizontal sides)."""
+        """Pin mode: nodes AND top-level activities sit at their hints;
+        edges route as orthogonal channels between the pinned boxes,
+        anchors on the facing sides of each pair (horizontal rows on the
+        vertical sides, vertical ladders on the horizontal sides)."""
         for n in self.nodes:
             # hints are pin coordinates; round to ints — the braille
             # renderer loops over pixel ranges
             n.x, n.y = int(round(n.at[0])), int(round(n.at[1]))
+        for a in self.activities:
+            if getattr(a, 'at', None) is not None:
+                a.x, a.y = int(round(a.at[0])), int(round(a.at[1]))
         self._update_port_positions()
         for e in self.edges:
             if self._is_visual_containment(e):
@@ -2810,13 +3011,17 @@ class Diagram:
             e.route((sx, sy), (tx, base if channel is None else channel),
                     (tx, ty))
         else:
-            # vertical ladder — anchor the facing top/bottom sides
+            # vertical ladder — anchor the facing top/bottom sides.
+            # box() gives the token-anchor extent (WaitTimeNode's box()
+            # stops at the glyph, above its hanging expression)
+            sb = s.box()
+            tb = t.box()
             if s.cy < t.cy:
-                sx, sy = s.cx, s.y + s.h
-                tx, ty = t.cx, t.y
+                sx, sy = s.cx, sb[3] + (s.y + s.h - sb[3])
+                tx, ty = t.cx, tb[1]
             else:
-                sx, sy = s.cx, s.y
-                tx, ty = t.cx, t.y + t.h
+                sx, sy = s.cx, sb[1]
+                tx, ty = t.cx, tb[3]
             if abs(sx - tx) <= 12:
                 e.route((sx, sy), (tx, ty))   # aligned: direct
                 return
@@ -3455,6 +3660,8 @@ class Diagram:
                                rounded=node.rounded, dashed=node.dashed,
                                compartments=getattr(node, 'compartments', None),
                                folder=_is_folder(node.stereotypes))
+                if getattr(node, 'rake', False):
+                    draw_rake(c, node.x + node.w - 4, node.y + node.h - 3)
             for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
@@ -3485,6 +3692,12 @@ class Diagram:
                 draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+            elif isinstance(a, SendSignalNode):
+                draw_send_signal_node(c, a)
+            elif isinstance(a, AcceptEventNode):
+                draw_accept_event_node(c, a)
+            elif isinstance(a, WaitTimeNode):
+                draw_wait_time_node(c, a)
 
         for n in self.nodes:
             if n in child_nodes:
@@ -3533,6 +3746,12 @@ class Diagram:
                 draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+            elif isinstance(a, SendSignalNode):
+                draw_send_signal_node(c, a)
+            elif isinstance(a, AcceptEventNode):
+                draw_accept_event_node(c, a)
+            elif isinstance(a, WaitTimeNode):
+                draw_wait_time_node(c, a)
 
         # ── sequence diagram elements (§7.4–7.7) ──
         self._update_seq_geometry()
@@ -3804,6 +4023,9 @@ class Diagram:
                 deferred_actor_labels.append(node)
             else:
                 svg_draw_node(c, node)
+                if getattr(node, 'rake', False):
+                    svg_draw_rake(c, node.x + node.w - 2,
+                                  node.y + node.h - 2)
             for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     svg_draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
@@ -3833,6 +4055,12 @@ class Diagram:
                 svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 svg_draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+            elif isinstance(a, SendSignalNode):
+                svg_draw_send_signal_node(c, a)
+            elif isinstance(a, AcceptEventNode):
+                svg_draw_accept_event_node(c, a)
+            elif isinstance(a, WaitTimeNode):
+                svg_draw_wait_time_node(c, a)
 
         for n in self.nodes:
             if n in child_nodes:
@@ -3892,6 +4120,12 @@ class Diagram:
                 svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
             elif isinstance(a, HistoryPseudostate):
                 svg_draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
+            elif isinstance(a, SendSignalNode):
+                svg_draw_send_signal_node(c, a)
+            elif isinstance(a, AcceptEventNode):
+                svg_draw_accept_event_node(c, a)
+            elif isinstance(a, WaitTimeNode):
+                svg_draw_wait_time_node(c, a)
         # ── sequence diagram elements (§7.4–7.7) ──
         self._update_seq_geometry()
         for s in self.exec_specs:

@@ -878,6 +878,51 @@ def svg_draw_decision_node(c, cx, cy, size, name=''):
         c.add_text(cx, cy + 4, name, anchor='middle')
 
 
+def svg_draw_send_signal_node(c, n):
+    """Convex signpost pentagon — send signal action (§6.8.3)."""
+    p = n.POINT
+    pts = [(n.x, n.y), (n.x + n.w - p, n.y), (n.x + n.w, n.cy),
+           (n.x + n.w - p, n.y + n.h), (n.x, n.y + n.h)]
+    c.add_polygon(pts, fill='white')
+    if n.name:
+        c.add_text(n.x + 4, n.cy + 4, n.name, anchor='start')
+
+
+def svg_draw_accept_event_node(c, n):
+    """Concave pentagon (notched arrival side) — accept event action
+    (§6.8.4)."""
+    q = n.NOTCH
+    pts = [(n.x, n.y), (n.x + n.w, n.y), (n.x + n.w, n.y + n.h),
+           (n.x, n.y + n.h), (n.x + q, n.cy)]
+    c.add_polygon(pts, fill='white')
+    if n.name:
+        c.add_text(n.x + q + 3, n.cy + 4, n.name, anchor='start')
+
+
+def svg_draw_wait_time_node(c, n):
+    """Hourglass (two triangles) + the time expression beneath — wait
+    time action (§6.8.5)."""
+    gh = n.glyph_h
+    cx = n.x + n.w // 2
+    mid = n.y + gh // 2
+    bot = n.y + gh
+    c.add_polygon([(n.x, n.y), (n.x + n.w, n.y), (cx, mid)], fill='white')
+    c.add_polygon([(cx, mid), (n.x, bot), (n.x + n.w, bot)], fill='white')
+    # waist crossbar
+    c.add_line(cx - 2, mid, cx + 2, mid)
+    if n.name:
+        c.add_text(cx, bot + 7, n.name, anchor='middle')
+
+
+def svg_draw_rake(c, x1, y1):
+    """Call behavior rake glyph (§6.8.2): two short parallel diagonals
+    in the lower-right corner; drawn AFTER the node's rect so the halo
+    rule never bites."""
+    for dx in (0, 3):
+        c.add_line(x1 - 8 + dx, y1, x1 - 4 + dx, y1 - 7)
+        c.add_line(x1 - 8 + dx, y1 - 1, x1 - 4 + dx, y1 - 8)
+
+
 def svg_draw_history_node(c, cx, cy, r, deep=False):
     """Shallow- or deep-history pseudostate.
 

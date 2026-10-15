@@ -66,7 +66,8 @@ from __future__ import annotations
 
 from diagramboxes.layout import (
     Diagram, Node, Edge, Port, Comment, View,
-    StartNode, DoneNode, TerminateNode, ForkJoinNode, DecisionNode,
+    StartNode, DoneNode, TerminateNode, ForkJoinNode, DecisionNode, \
+    SendSignalNode, AcceptEventNode, WaitTimeNode,
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate,
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate,
     HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort, \
@@ -90,7 +91,8 @@ DG_NS = "http://www.omg.org/spec/DD/20131001/DG"
 _DD_KIND = "ddKind"
 
 _ACTIVITY_CLASSES = (StartNode, DoneNode, TerminateNode, ForkJoinNode,
-                     DecisionNode, HistoryPseudostate)
+                     DecisionNode, HistoryPseudostate, SendSignalNode,
+                     AcceptEventNode, WaitTimeNode)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +260,8 @@ def to_di(diagram):
             size = getattr(el, "size", 28)
             if size != 28:
                 d["size"] = size
+        if getattr(el, "rake", False):
+            d["rake"] = True
         if isinstance(el, Comment):
             d["text"] = el.text
         return d
@@ -387,6 +391,12 @@ def _shape_from_dict(sd):
         el = DecisionNode(name, size=sd.get("size", 28))
     elif kind == "HistoryPseudostate":
         el = HistoryPseudostate(name, deep=sd.get("deep", False))
+    elif kind == "SendSignalNode":
+        el = SendSignalNode(name)
+    elif kind == "AcceptEventNode":
+        el = AcceptEventNode(name)
+    elif kind == "WaitTimeNode":
+        el = WaitTimeNode(name)
     else:
         el = Node(name, stereotypes=sd.get("stereotypes"),
                   attributes=sd.get("attributes"),
@@ -395,6 +405,8 @@ def _shape_from_dict(sd):
                   compartments=sd.get("compartments"))
     b = sd.get("bounds") or [0, 0, 0, 0]
     el.x, el.y, el.w, el.h = b
+    if sd.get("rake") and hasattr(el, "rake"):
+        el.rake = True
     for pd in sd.get("ports", []):
         el.ports.append(_port_from_dict(pd, el))
     for idx, idf in enumerate(sd.get("interfaces", [])):
@@ -435,6 +447,8 @@ def _shape_xml(sd, indent):
         sattrs.append('rounded="true"')
     if sd.get("dashed"):
         sattrs.append('dashed="true"')
+    if sd.get("rake"):
+        sattrs.append('rake="true"')
     lines = ['%s<di:Shape xmi:id="%s" %s>' % (indent, eid, " ".join(sattrs))]
     lines.append(_bounds_xml(sd.get("bounds") or [0, 0, 0, 0], indent + "  "))
     name = sd.get("name")
@@ -504,6 +518,8 @@ def _parse_shape_element(el):
         sd["rounded"] = True
     if el.get("dashed") == "true":
         sd["dashed"] = True
+    if el.get("rake") == "true":
+        sd["rake"] = True
     b = el.find("bounds")
     if b is not None:
         sd["bounds"] = [float(b.get("x", 0)), float(b.get("y", 0)),
