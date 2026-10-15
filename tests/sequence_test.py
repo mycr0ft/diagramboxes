@@ -134,8 +134,8 @@ def test_found_lost_attach_to_frame_border_when_framed():
     fr = d._frame_rect()
     assert fr is not None
     x1 = fr[0]
-    assert abs(m1.x1 - (x1 + 2)) < 1, 'found line attaches at the left border'
-    assert abs(m2.x2 - (x1 + 2)) < 1, 'lost line terminates at the left border'
+    assert abs(m1.x1 - x1) < 1, 'found line attaches flush at the left border'
+    assert abs(m2.x2 - x1) < 1, 'lost line terminates flush at the left border'
 
 
 def test_sequence_survives_di_and_xmi_round_trip():

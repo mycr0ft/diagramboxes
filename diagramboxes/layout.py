@@ -1175,19 +1175,19 @@ class Diagram:
         return x_src, x_dst
 
     def _seq_midair_endpoints(self, m):
-        """(e1, e2) for found/lost messages: at the frame border when the
-        diagram is framed, else 90 units out beyond the nearest
-        lifeline."""
+        """(e1, e2) for found/lost messages: flush at the frame border
+        when the diagram is framed (the book's strokes overlap the
+        border column), else 90 units out beyond the nearest lifeline."""
         fr = self._frame_rect() if self.frame is not None else None
         if m.src is None:
             if fr is not None:
-                return ((fr[0] + 2, m.dst.x) if m.from_left
-                        else (fr[2] - 2, m.dst.x))
+                return ((fr[0], m.dst.x) if m.from_left
+                        else (fr[2], m.dst.x))
             return ((m.dst.x - 90, m.dst.x) if m.from_left
                     else (m.dst.x + 90, m.dst.x))
         if fr is not None:
-            return ((m.src.x, fr[2] - 2) if m.to_right
-                    else (m.src.x, fr[0] + 2))
+            return ((m.src.x, fr[2]) if m.to_right
+                    else (m.src.x, fr[0]))
         return ((m.src.x, m.src.x + 90) if m.to_right
                 else (m.src.x, m.src.x - 90))
 
