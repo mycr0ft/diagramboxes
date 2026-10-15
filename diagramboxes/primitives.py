@@ -1104,9 +1104,10 @@ def draw_interface(c, iface):
 
 def draw_par_param(c, p):
     """Constraint-parameter square (§9.6): a small square docked on the
-    inside of its owner's boundary; the '<name> : <type>' string renders
-    beside it — rightward for left/top/bottom-side params, leftward for
-    right-side ones."""
+    inside of its owner's boundary (or STRADDLING the frame border for
+    frame-attached sockets, Fig 9.3). Drawn AFTER the frame and edges so
+    square outlines win; frame-socket labels print ABOVE the square
+    (clear of the connector leg)."""
     s = p.w
     for rx, ry in line(p.x, p.y, p.x + s, p.y):
         c.set(rx, ry)
@@ -1116,6 +1117,12 @@ def draw_par_param(c, p):
         c.set(rx, ry)
     for rx, ry in line(p.x, p.y + s, p.x, p.y):
         c.set(rx, ry)
+    if p.owner is None and p.side in ('left', 'right'):
+        if p.side == 'right':
+            c.set_text(max(0, p.x - 2 - len(p.name)), p.y - 6, p.name)
+        else:
+            c.set_text(p.x + p.w + 2, p.y - 6, p.name)
+        return
     ly = p.y + s // 2
     if p.side == 'right':
         c.set_text(max(0, p.x - 2 - len(p.name)), ly, p.name)

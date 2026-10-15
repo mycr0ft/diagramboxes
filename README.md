@@ -412,7 +412,11 @@ vp2 = d.par_value('currentOrbitRadius', 'km', mult='0..1')
 
 Constraint parameters, binding flags and the rounded/`par` round-trip all
 carry through DI and XMI (`di:ParParam` elements, `binding="true"` edges,
-`rounded="true"` shapes).
+`rounded="true"` shapes). Frame-attached sockets STRADDLE the frame border
+(§4.8 frame-port precedent — set `d.frame_pad` so socket labels have a
+band inside the border); owner boxes auto-widen to seat their longest
+parameter label; `node.set_min_height(h)` reserves room for param rows.
+Socket labels print just above the connector leg, inside the frame.
 
 ### 5. Rendering to SVG
 

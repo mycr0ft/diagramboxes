@@ -43,12 +43,13 @@ def test_par_param_docks_on_frame_for_constraintblock_frame():
     d.add_frame('par', element_kind='constraintBlock',
                 element_name='Hohmann Transfer')
     d.par_constraint('tos', 'Transfer Orbit Size')
-    # owner=None → the diagram frame itself (§9.6)
+    # owner=None → the diagram frame itself (§9.6): sockets STRADDLE the
+    # frame border like §4.8 frame ports (Fig 9.3 pixel evidence)
     p = d.par_param('r1', 'km', side='left', offset=0.75)
     d.render()
     assert p.placed
     fr = d._frame_rect()
-    assert p.x == fr[0]            # flush at the frame's inner left border
+    assert p.x + p.w // 2 == fr[0]
     assert 'r1 : km' in _braille(d)
 
 
@@ -118,6 +119,125 @@ def test_parametric_round_trips_di_and_xmi():
                    for e in d2.edges)
         d2.render()
         assert 'r1 : km' in _braille(d2)
+
+
+def test_binding_between_facing_params_routes_orthogonal_channel():
+    d = Diagram()
+    d.add_frame('par', element_kind='constraintBlock', element_name='HT')
+    tos = d.par_constraint('tos', 'Transfer Orbit Size')
+    ttof = d.par_constraint('ttof', 'Transfer Time of Flight')
+    tos.set_min_height(46)
+    ttof.set_min_height(46)
+    a = d.par_param('sma', 'km', tos, side='right', offset=0.9)
+    b = d.par_param('sma2', 'km', ttof, side='left', offset=0.9)
+    e = d.bind(a, b)
+    d.render()   # facing sides, equal y → direct two-point line (Fig 9.3)
+    assert len(e.waypoints) == 2
+    assert e.waypoints[0][1] == e.waypoints[1][1]
+
+    d2 = Diagram()
+    d2.add_frame('par', element_kind='constraintBlock', element_name='HT')
+    tos2 = d2.par_constraint('tos2', 'Transfer Orbit Size')
+    tos2.set_min_height(46)
+    fr_p = d2.par_param('r1', 'km', side='left', offset=0.3)   # on the frame
+    box_p = d2.par_param('r1b', 'km', tos2, side='left', offset=0.9)
+    eb = d2.bind(fr_p, box_p)
+    d2.render()   # non-facing y's → single vertical channel, 4 points
+    assert len(eb.waypoints) == 4
+    wp = eb.waypoints
+    assert wp[1][0] == wp[2][0], 'vertical channel between the two ends'
+    assert wp[0][1] == wp[1][1] and wp[2][1] == wp[3][1]
+
+
+def test_set_min_height_survives_layout():
+    d = Diagram()
+    tos = d.par_constraint('tos', 'Transfer Orbit Size')
+    tos.set_min_height(46)
+    d.render()
+    assert tos.h == 46
+
+
+def test_frame_pad_widens_the_border_bands():
+    d = Diagram()
+    d.add_frame('par', element_kind='constraintBlock', element_name='HT')
+    d.par_constraint('tos', 'Transfer Orbit Size')
+    d.frame_pad = 70
+    d.render()
+    fr = d._frame_rect()
+    nodes = d.nodes
+    assert nodes[0].x - fr[0] > 60, 'content insets from the border'
+
+    d2 = Diagram()
+    d2.add_frame('ibd', element_kind='block', element_name='B')
+    d2.add_node('n 1')
+    d2.render()   # default: frame hugs the content as before
+    fr2 = d2._frame_rect()
+    assert d2.nodes[0].x - fr2[0] < 12
+
+
+def test_param_round_trip_keeps_docked_geometry():
+    d = Diagram()
+    d.add_frame('par', element_kind='constraintBlock', element_name='HT')
+    tos = d.par_constraint('tos', 'Transfer Orbit Size')
+    tos.set_min_height(46)
+    p = d.par_param('r1', 'km', tos, side='left', offset=0.75)
+    d.bind(p, tos)
+    d.render()
+    payload = to_di(d)
+    d2 = from_di(payload)
+    p2 = d2.par_params[0]
+    assert (p2.x, p2.y) == (p.x, p.y)
+    assert p2.owner.name == 'tos : Transfer Orbit Size'
+    assert p2.offset == 0.75
+
+
+def test_frame_socket_straddle_survives_render_recompute():
+    """The Fig 9.3 round-2 bug: sockets docked on the placement-time
+    frame, while box widening/reroute waypoints re-grew the frame at
+    render time (border 111 units outside the sockets). After the fix
+    (widen first, binding legs excluded from _content_bounds) the socket
+    centers must sit ON the frame border even recomputed after render."""
+    d = Diagram()
+    d.add_frame('par', element_kind='constraintBlock', element_name='HT')
+    tos = d.par_constraint('tos', 'Transfer Orbit Size')
+    tos.set_min_height(46)
+    fp = d.par_param('initialOrbitRadius', 'km', side='left', offset=0.35)
+    bp = d.par_param('initialOrbitRadius', 'km', tos, side='left',
+                     offset=0.35)
+    d.bind(fp, bp)
+    d.render()
+    d.render_svg()
+    fr = d._frame_rect()   # recomputed exactly as render_svg drew it
+    assert fp.x + fp.w // 2 == fr[0]
+    assert bp.x == tos.x   # owner-docked: flush inside
+    # and the box param label fits inside the (widened) owner
+    assert len(bp.name) * 2 + 6 <= tos.w
+
+
+def test_socket_label_halo_stays_off_the_border():
+    """Fig 9.3 round-3: socket labels must print INSIDE the frame, off
+    the border column (centered-on-border halos wiped the frame border
+    and the header band)."""
+    import re as _re
+    d = Diagram()
+    d.add_frame('par', element_kind='constraintBlock', element_name='HT')
+    tos = d.par_constraint('tos', 'Transfer Orbit Size')
+    tos.set_min_height(46)
+    d.par_param('initialOrbitRadius', 'km', side='left', offset=0.35)
+    d.par_param('timeOfFlight', 's', side='right', offset=0.35)
+    svg = d.render_svg()
+    border = max(_re.findall(r'<rect x="(-?[\d.]+)" y="(-?[\d.]+)" '
+                             r'width="(\d[\d.]*)" height="([\d.]+)"', svg),
+                             key=lambda r: float(r[2]))
+    bx1, bx2 = float(border[0]), float(border[0]) + float(border[2])
+    halos = _re.findall(r'<rect class="halo" x="(-?[\d.]+)" y="[-\d.]+'
+                        r'" width="([\d.]+)"', svg)
+    straddle = [h for h in halos
+                if float(h[0]) <= (bx1 + 1) <= float(h[0]) + float(h[1]) - 1]
+    assert not straddle, 'a halo rect crosses the left border column'
+    straddle = [h for h in halos
+                if float(h[0]) <= (bx2 - 1) <= float(h[0]) + float(h[1]) - 1]
+    assert not straddle, 'a halo rect crosses the right border column'
 
 
 def test_raster_covers_strings_and_square():

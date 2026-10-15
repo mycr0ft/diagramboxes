@@ -427,7 +427,7 @@ class Node:
             total_lines += 1 + len(self.attributes)
         for title, lines in self.compartments:
             total_lines += 2 + len(lines)  # separator + title + content
-        self.h = total_lines * 5 + 8
+        self.h = max(total_lines * 5 + 8, getattr(self, 'h_hint', 0))
 
     def add_port(self, label, side='left', offset=None, direction=None,
                  label_inside=False):
@@ -439,6 +439,13 @@ class Node:
     def add_attribute(self, text):
         self.attributes.append(text)
         self._calc_size()
+
+    def set_min_height(self, h):
+        """Reserve room below the text rows across layout passes — a
+        height hint ``_calc_size`` honors (used for constraint-property
+        boxes sized to seat their parameter squares, Fig 9.3)."""
+        self.h_hint = h
+        self.h = max(self.h, h)
 
     def add_interface(self, name, kind='provided', side='right', offset=0.5,
                       index=None):
@@ -1117,6 +1124,7 @@ class Diagram:
         self.frame = None  # optional DiagramFrame (SysML v1 diagram-kind)
         self.frame_ports = []  # FramePorts straddling the frame border (§4.8)
         self.par_params = []  # constraint-parameter squares (§9.6)
+        self.frame_pad = 0    # extra inset between the border and content
         self.lifelines = []    # sequence participants (§7.4)
         self.messages = []     # SeqMessages (§7.5)
         self.exec_specs = []   # SeqExec execution specifications (§7.7)
@@ -2226,6 +2234,11 @@ class Diagram:
                 continue
             if isinstance(e.source, FramePort) or isinstance(e.target, FramePort):
                 continue  # frame-port edges route in the placement pass
+            if getattr(e.source, 'is_par_param', False) or \
+                    getattr(e.target, 'is_par_param', False):
+                continue  # binding edges route in the placement pass (§9.8)
+            if e.target not in incoming:
+                continue  # edges to ParParams/etc. are not layer constraints
             incoming[e.target].add(e.source)
 
         roots = [n for n in eligible if not incoming[n]]
@@ -2967,6 +2980,9 @@ class Diagram:
                     isinstance(getattr(e, 'target_port', None), FramePort):
                 continue  # routed frame-port waypoints must not widen the
                           # frame between port placement and drawing
+            if getattr(e, 'is_binding', False):
+                continue  # binding legs end at sockets on/near the border
+                          # — they must not widen the frame under them
             for px, py in e.waypoints:
                 xs.append(px)
                 ys.append(py)
@@ -3005,9 +3021,10 @@ class Diagram:
         else:
             x1 = y1 = 0
             x2 = y2 = 40
-        x1 = min(x1 - 4, 4)
+        x1 = min(x1 - 4 - getattr(self, 'frame_pad', 0), 4)
         y1 -= 4
-        x2 = max(x2 + 4, len(self.frame.header) * 2 + 12)
+        x2 = max(x2 + 4 + getattr(self, 'frame_pad', 0),
+                 len(self.frame.header) * 2 + 12)
         y2 += 4
         return (x1, y1 - DiagramFrame.HEADER_H, x2, y2)
 
@@ -3048,29 +3065,51 @@ class Diagram:
                 e.frame_pending = False
 
     def _place_par_params(self):
-        """Dock ParParam squares inside their owner's boundary (or on the
-        frame's inner border when the owner is the frame, §9.6) and route
-        binding edges as straight boundary-to-boundary segments (§9.8) —
-        called from render/render_svg after layout (§9.4-9.8,
-        Figures 9.3/9.4)."""
+        """Dock ParParam squares inside their owner's boundary (or
+        STRADDLING the frame border when the owner is the frame, Fig 9.3
+        pixel evidence / §4.8 frame-port precedent) and route binding
+        edges straight or through a single orthogonal channel (§9.8) —
+        called from render/render_svg after layout.
+
+        Order matters (Fig 9.3 round-2 feedback loop): widen owners
+        FIRST (their growth feeds _frame_rect), then measure the frame
+        ONCE, dock, and route — never let route waypoints widen the
+        frame under already-docked sockets.
+        """
         if not self.par_params:
             return
+        # 1) widen owner boxes so their param labels fit INSIDE with
+        # margin (Fig 9.3 ~25% inner margin) — before measuring the
+        # frame, since node bounds feed it
+        for p in self.par_params:
+            r = p.owner
+            if r is None or getattr(r, 'is_par_param', False) or \
+                    getattr(r, 'is_frame_port', False):
+                continue
+            needed = PAR_PARAM_S + len(p.name) * 2 + 6 + 12
+            if p.side in ('left', 'right') and r.w < needed:
+                r.w = needed
+        # 2) measure the frame ONCE and dock the squares
         fr = self._frame_rect()
         for p in self.par_params:
             r = p.owner
             if r is None and fr is not None:
+                # frame socket (Fig 9.3): the square STRADDLES the frame
+                # border, like a §4.8 frame port; the binding starts the
+                # leg at the border side
                 x1, y1, x2, y2 = fr
                 if p.side == 'left':
-                    p.x, p.y = x1, y1 + int((y2 - y1) * p.offset) - p.h // 2
+                    p.x = x1 - p.w // 2
+                    p.y = y1 + int((y2 - y1) * p.offset) - p.h // 2
                 elif p.side == 'right':
-                    p.x = x2 - p.w
+                    p.x = x2 - p.w // 2
                     p.y = y1 + int((y2 - y1) * p.offset) - p.h // 2
                 elif p.side == 'top':
                     p.x = x1 + int((x2 - x1) * p.offset) - p.w // 2
-                    p.y = y1
+                    p.y = y1 - p.h // 2
                 else:
                     p.x = x1 + int((x2 - x1) * p.offset) - p.w // 2
-                    p.y = y2 - p.h
+                    p.y = y2 - p.h // 2
             elif r is not None:
                 if getattr(r, 'x', None) is None or (r.x == 0 and r.y == 0
                                                      and r.w == 0):
@@ -3103,21 +3142,35 @@ class Diagram:
             mid = cx + int((tx - cx) * el.h // (2 * max(1, abs(ty - cy))))
             return (mid, el.y) if ty < cy else (mid, el.y + el.h)
 
+        def _out_face(p):
+            """A parameter square's outward face midpoint (§9.6)."""
+            return {
+                'left': (p.x, p.y + p.h // 2),
+                'right': (p.x + p.w, p.y + p.h // 2),
+                'top': (p.x + p.w // 2, p.y),
+                'bottom': (p.x + p.w // 2, p.y + p.h),
+            }[p.side]
+
         for e in self.edges:
             if not getattr(e, 'is_binding', False):
                 continue
             s, t = e.source, e.target
-            s_ok = getattr(s, 'is_par_param', False) and s.placed
-            t_ok = getattr(t, 'is_par_param', False) and t.placed
-            if s_ok and t_ok:
-                e.waypoints = [(s.x + s.w // 2, s.y + s.h // 2),
-                               (t.x + t.w // 2, t.y + t.h // 2)]
-            elif t_ok and not s_ok:
-                e.waypoints = [(t.x + t.w // 2, t.y + t.h // 2),
-                               _dock_point(s, (t.cx, t.cy))]
-            elif s_ok and s.placed:
-                e.waypoints = [(s.x + s.w // 2, s.y + s.h // 2),
-                               _dock_point(t, (s.cx, s.cy))]
+            s_p = getattr(s, 'is_par_param', False) and s.placed
+            t_p = getattr(t, 'is_par_param', False) and t.placed
+            if s_p and t_p:
+                so, to_ = _out_face(s), _out_face(t)
+                if so[1] == to_[1] or so[0] == to_[0]:
+                    e.waypoints = [so, to_]   # direct line (Fig 9.3 #5)
+                elif s.side in ('left', 'right') and t.side in ('left', 'right'):
+                    mx = (so[0] + to_[0]) // 2
+                    e.waypoints = [so, (mx, so[1]), (mx, to_[1]), to_]
+                else:
+                    my = (so[1] + to_[1]) // 2
+                    e.waypoints = [so, (so[0], my), (to_[0], my), to_]
+            elif t_p and not s_p:
+                e.waypoints = [_out_face(t), _dock_point(s, (t.cx, t.cy))]
+            elif s_p:
+                e.waypoints = [_out_face(s), _dock_point(t, (s.cx, s.cy))]
 
     def render(self, c=None, routing='orthogonal', layer_gap=50, node_gap=12, margin=8):
         if c is None:
@@ -3258,8 +3311,6 @@ class Diagram:
                           else self._FRAME_PORT_INNER[p.side])
             for i in p.interfaces:
                 draw_interface(c, i)
-        for p in self.par_params:
-            draw_par_param(c, p)
         for a in self.activities:
             if getattr(a, 'parent', None) is not None:
                 continue  # drawn inside its composite node
@@ -3325,6 +3376,10 @@ class Diagram:
         fr = self._frame_rect()
         if fr is not None and self.frame is not None:
             draw_diagram_frame(c, fr[0], fr[1], fr[2], fr[3], self.frame.header)
+        # parameter squares + labels AFTER the frame/edges: square
+        # outlines straddle the border cleanly, text pixels win last
+        for p in self.par_params:
+            draw_par_param(c, p)
         return c.frame()
 
     def render_svg(self, routing='orthogonal', layer_gap=50, node_gap=12, margin=8, scale=1.5):
@@ -3429,6 +3484,14 @@ class Diagram:
                 min_x = min(min_x, p.x)
                 max_x = max(max_x, p.x + p.w)
                 min_y = min(min_y, p.y)
+                max_y = max(max_y, p.y + p.h)
+        # Placed parametric sockets/param labels widen only the canvas —
+        # their legs already end near the border (never feed _frame_rect)
+        for p in self.par_params:
+            if getattr(p, 'placed', False):
+                min_x = min(min_x, p.x - 2)
+                max_x = max(max_x, p.x + p.w + 2)
+                min_y = min(min_y, p.y - 12 if p.owner is None else p.y)
                 max_y = max(max_y, p.y + p.h)
                 lab = getattr(p, 'label', '')
                 if lab:
@@ -3545,6 +3608,11 @@ class Diagram:
                         deferred_port_labels.append(p)
                     for i in p.interfaces:
                         svg_draw_interface(c, i)
+        # Parametric squares AFTER the nodes (squares sit on top of the
+        # box interior, never buried) and BEFORE the edges (halos never
+        # erase connector or border ink — Fig 9.3 rounds 1-2)
+        for p in self.par_params:
+            svg_par_param(c, p)
         # NOTE: port labels and frame ports are drawn AFTER the edges so
         # their halo labels erase the connector ink, not the reverse.
         for e in self.edges:
@@ -3595,10 +3663,6 @@ class Diagram:
             svg_seq_constraint(c, cc.lifeline, cc)
         for f in self.fragments:
             svg_seq_fragment(c, f, self._fragment_span_x(f))
-
-        # ── parametric diagram elements (§9.4–9.8) ──
-        for p in self.par_params:
-            svg_par_param(c, p)
 
         return c.output(width=w, height=h, padding=pad * scale,
                         origin=(min_x * scale, min_y * scale))

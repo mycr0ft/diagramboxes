@@ -418,10 +418,22 @@ def svg_seq_self_message(c, x, y, kind, label):
 
 def svg_par_param(c, p):
     """Constraint-parameter square (§9.6): a small square docked on the
-    inside of its owner's boundary; halo label beside it — rightward for
-    left/top/bottom-side params, leftward for right-side ones (drawn
-    AFTER edges so the square repaints over the binding line's tip)."""
+    inside of its owner's boundary (or STRADDLING the frame border for
+    frame-attached sockets, Fig 9.3). Drawn AFTER the nodes (squares on
+    top of the box interior, not buried) and BEFORE the edges (halos
+    never erase connector or border ink, vision round 2). Socket labels
+    print with their baseline ON the square's top edge — just above the
+    connector leg (the book's spacing)."""
     c.add_rect(p.x, p.y, p.w, p.h, fill='white')
+    if p.owner is None and p.side in ('left', 'right'):
+        # the book keeps socket labels INSIDE the frame, off the border
+        # column, just above the connector leg — centered-on-border
+        # halos wipe the border and the header band (Fig 9.3 round 3)
+        if p.side == 'left':
+            c.add_label(p.x + p.w + 2, p.y - 4, p.name, anchor='start')
+        else:
+            c.add_label(p.x - 2, p.y - 4, p.name, anchor='end')
+        return
     ly = p.y + p.h / 2 + 2
     if p.side == 'right':
         c.add_label(p.x - 2, ly, p.name, anchor='end')
@@ -848,7 +860,9 @@ def svg_draw_frame(c, x1, y1, x2, y2, header):
     if header:
         fold = min(4, (x2 - x1) / 8)
         tag_h = 10
-        tag_w = min(len(header) * 2 + 10, (x2 - x1) - fold - 4)
+        # the headline band runs to the book's ~94% of the frame width
+        # with the dog-leg cut at its far-right end (Fig 9.3)
+        tag_w = (x2 - x1) * 0.94
         pts = [
             (x1, y1),
             (x1 + tag_w - fold, y1),
