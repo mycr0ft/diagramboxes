@@ -684,7 +684,20 @@ class TerminateNode:
         return (self.x, self.y, self.x + self.w, self.y + self.h)
 
 
-class SendSignalNode:
+class _ActivityPorts:
+    """Minimal port attachment for activity shapes — pins (§6.6.1):
+    small squares on an action's boundary carrying the pin's name
+    string.  Shared by the §6.8 action shapes."""
+
+    def add_port(self, label, side='left', offset=None, direction=None,
+                 label_inside=False):
+        p = Port(label, side, offset, direction, label_inside=label_inside)
+        p.parent = self
+        self.ports.append(p)
+        return p
+
+
+class SendSignalNode(_ActivityPorts):
     """Send signal action — convex signpost pentagon (§6.8.3).
 
     The left edge is square; the right side converges to a point in
@@ -699,6 +712,7 @@ class SendSignalNode:
         self.h = h
         self.x = self.y = 0
         self.parent = None
+        self.ports = []
         self.at = tuple(at) if at is not None else None
 
     @property
@@ -713,7 +727,7 @@ class SendSignalNode:
         return (self.x, self.y, self.x + self.w, self.y + self.h)
 
 
-class AcceptEventNode:
+class AcceptEventNode(_ActivityPorts):
     """Accept event action — concave pentagon (§6.8.4).
 
     A rectangle with a triangular notch cut into the arrival (left)
@@ -728,6 +742,7 @@ class AcceptEventNode:
         self.h = h
         self.x = self.y = 0
         self.parent = None
+        self.ports = []
         self.at = tuple(at) if at is not None else None
 
     @property
@@ -929,8 +944,8 @@ class TerminatePseudostate(TerminateNode):
     Visually identical to the activity :class:`TerminateNode`.
     """
 
-    def __init__(self, name='terminate'):
-        super().__init__(name=name)
+    def __init__(self, name='terminate', at=None):
+        super().__init__(name=name, at=at)
 
 
 # State-machine history pseudostate — needs its own primitive.
@@ -2090,8 +2105,10 @@ class Diagram:
         self.activities.append(n)
         return n
 
-    def add_terminate(self, name='terminate', kind='state', parent=None):
-        """Add a state-machine terminate pseudostate (open circle with X).
+    def add_terminate(self, name='terminate', kind='state', parent=None,
+                      at=None):
+        """Add a terminate node — open circle with an X (§6.9.2 flow
+        final notation; the state-machine variant shares shape/class).
 
         ``kind`` is accepted for forward compatibility — activity terminate
         (``kind='activity'``) and state terminate (``kind='state'``) share
@@ -2101,7 +2118,7 @@ class Diagram:
         -------
         TerminatePseudostate
         """
-        n = TerminatePseudostate(name=name)
+        n = TerminatePseudostate(name=name, at=at)
         if parent is not None:
             n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
@@ -2158,6 +2175,21 @@ class Diagram:
         return p
 
     def _update_port_positions(self):
+        for act in self.activities:
+            # activity pins (§6.6.1): straddle the shape's boundary
+            if getattr(act, 'ports', None):
+                box = act.box()
+                for p in act.ports:
+                    if p.side == 'left':
+                        p.x, p.y = box[0] - PORT_W // 2, box[3] - PORT_H
+                    elif p.side == 'right':
+                        p.x, p.y = box[2] - PORT_W // 2, box[3] - PORT_H
+                    elif p.side == 'top':
+                        p.x, p.y = box[0] + (box[2] - box[0]) // 2 - PORT_W // 2, \
+                            box[1] - PORT_H // 2
+                    else:  # bottom
+                        p.x, p.y = box[0] + (box[2] - box[0]) // 2 - PORT_W // 2, \
+                            box[3] - PORT_H // 2
         for n in self.nodes:
             if n.ports:
                 groups = defaultdict(list)
@@ -2968,6 +3000,8 @@ class Diagram:
                 a.x, a.y = int(round(a.at[0])), int(round(a.at[1]))
         self._update_port_positions()
         for e in self.edges:
+            if getattr(e, '_manual_route', False):
+                continue    # script-curated waypoints survive re-renders
             if self._is_visual_containment(e):
                 continue
             if getattr(e, '_nested_internal', False):
@@ -3698,6 +3732,10 @@ class Diagram:
                 draw_accept_event_node(c, a)
             elif isinstance(a, WaitTimeNode):
                 draw_wait_time_node(c, a)
+            for p in getattr(a, 'ports', []):
+                draw_port_box(c, p.x, p.y, p.label, side=p.side,
+                              direction=p.direction,
+                              label_inside=getattr(p, 'label_inside', False))
 
         for n in self.nodes:
             if n in child_nodes:
@@ -3752,6 +3790,10 @@ class Diagram:
                 draw_accept_event_node(c, a)
             elif isinstance(a, WaitTimeNode):
                 draw_wait_time_node(c, a)
+            for p in getattr(a, 'ports', []):
+                draw_port_box(c, p.x, p.y, p.label, side=p.side,
+                              direction=p.direction,
+                              label_inside=getattr(p, 'label_inside', False))
 
         # ── sequence diagram elements (§7.4–7.7) ──
         self._update_seq_geometry()
@@ -4061,6 +4103,10 @@ class Diagram:
                 svg_draw_accept_event_node(c, a)
             elif isinstance(a, WaitTimeNode):
                 svg_draw_wait_time_node(c, a)
+            for p in getattr(a, 'ports', []):
+                svg_draw_port(c, p, with_label=False)
+                if p.label:
+                    svg_port_label(c, p)
 
         for n in self.nodes:
             if n in child_nodes:
@@ -4126,6 +4172,10 @@ class Diagram:
                 svg_draw_accept_event_node(c, a)
             elif isinstance(a, WaitTimeNode):
                 svg_draw_wait_time_node(c, a)
+            for p in getattr(a, 'ports', []):
+                svg_draw_port(c, p, with_label=False)
+                if p.label:
+                    svg_port_label(c, p)
         # ── sequence diagram elements (§7.4–7.7) ──
         self._update_seq_geometry()
         for s in self.exec_specs:
