@@ -96,6 +96,31 @@ def test_execution_spec_attaches_message_ends():
     assert e.x2 == mans.x
 
 
+def test_found_and_lost_messages():
+    """§7.5: found/lost messages — ends at the frame boundary mid-air.
+    Figure 7.10 opens with a found initializeMANS() and closes with
+    fc's reply leaving toward the frame edge."""
+    d, fc, mans = _diag()
+    fin = d.seq_found(fc, y=20, label='initializeMANS( )', kind='sync')
+    fl = d.seq_lost(fc, y=40, label='initializeMANS( ) : "Ready"',
+                    kind='reply')
+    d.seq_exec(fc, 20, 40)
+    assert fin.src is None and fin.dst is fc
+    assert fl.src is fc and fl.dst is None and fl.kind == 'reply'
+    d2 = d.render_svg(routing='orthogonal')
+    e = d.messages[0]
+    assert e.x1 == fc.x - 90, 'found message starts mid-air left of fc'
+    assert e.x2 == fc.x, 'and docks on fc'
+    f = d.messages[1]
+    assert f.x1 == fc.x, 'lost message departs from fc'
+    assert f.x2 == fc.x + 90, 'and leaves mid-air'
+    d3 = from_di(to_di(d))
+    assert d3.messages[0].src is None and d3.messages[0].dst is not None
+    assert d3.messages[1].src is not None and d3.messages[1].dst is None
+    d4 = from_di(from_di_xmi(to_di_xmi(to_di(d))))
+    assert d4.messages[0].src is None and d4.messages[1].dst is None
+
+
 def test_sequence_survives_di_and_xmi_round_trip():
     d, fc, mans = _diag()
     mansdd = d.add_lifeline('mansdd : MANS Device Driver', created=True)

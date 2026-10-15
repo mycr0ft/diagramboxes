@@ -311,8 +311,10 @@ def to_di(diagram):
              "headY": li.head_y, "created": li.created}
             for i, li in enumerate(diagram.lifelines)]
         out["sequenceMessages"] = [
-            {"kind": m.kind, "src": li_index[id(m.src)],
-             "dst": li_index[id(m.dst)], "y": m.y, "label": m.label}
+            {"kind": m.kind,
+             "src": li_index[id(m.src)] if m.src is not None else -1,
+             "dst": li_index[id(m.dst)] if m.dst is not None else -1,
+             "y": m.y, "label": m.label}
             for m in diagram.messages]
         out["sequenceExecSpecs"] = [
             {"li": li_index[id(s.lifeline)], "y1": s.y1, "y2": s.y2,
@@ -731,12 +733,15 @@ def from_di(payload):
     lis = list(d.lifelines)
     for md in payload.get("sequenceMessages", []):
         si, ti = md.get("src", 0), md.get("dst", 0)
-        if si < len(lis) and ti < len(lis):
-            kind = md.get("kind", "async")
-            m = d._seq_message(lis[si], lis[ti], kind,
-                               md.get("y", 0), md.get("label"))
-            if kind == 'create' and md.get("headY") is not None:
-                m.dst.head_y = md["headY"]
+        src = lis[si] if 0 <= si < len(lis) else None
+        dst = lis[ti] if 0 <= ti < len(lis) else None
+        if src is None and dst is None:
+            continue
+        kind = md.get("kind", "async")
+        d.messages.append(SeqMessage(src, dst, kind,
+                                     md.get("y", 0), md.get("label")))
+        if kind == 'create' and dst is not None and md.get("headY") is not None:
+            dst.head_y = int(md["headY"])
     for sd_ in payload.get("sequenceExecSpecs", []):
         i = sd_.get("li", 0)
         if i < len(lis):

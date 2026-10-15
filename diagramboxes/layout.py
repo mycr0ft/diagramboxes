@@ -1080,6 +1080,16 @@ class Diagram:
         the performing lifeline back to the invoker."""
         return self._seq_message(src, dst, 'reply', y, label)
 
+    def seq_found(self, dst, y, label=None, kind='sync'):
+        """Found message (§7.5): the sender is outside the diagram —
+        the arrow departs from a point mid-air to the receiver."""
+        return self._seq_message(None, dst, kind, y, label)
+
+    def seq_lost(self, src, y, label=None, kind='reply'):
+        """Lost message (§7.5): the receiver is outside the diagram —
+        the line departs the sender and ends mid-air."""
+        return self._seq_message(src, None, kind, y, label)
+
     def seq_create(self, src, dst, label=None, y=None):
         """Create message (§7.5.2): dashed line, open arrowhead landing
         on the created lifeline's head; the arrowhead row becomes the
@@ -1119,7 +1129,9 @@ class Diagram:
         return None
 
     def _lifeline_tail_end(self, li):
-        rows = [m.y for m in self.messages if m.src is li or m.dst is li]
+        rows = [m.y for m in self.messages
+                if (m.src is li or m.dst is li)
+                and m.src is not None and m.dst is not None]
         rows += [s.y2 for s in self.exec_specs if s.lifeline is li]
         rows += [x.y for x in self.destructions if x.lifeline is li]
         return max(rows, default=li.tail_start + 20)
@@ -1133,7 +1145,13 @@ class Diagram:
         return li.x + (SEQ_EXEC_W // 2 if to_right else -SEQ_EXEC_W // 2)
 
     def _seq_message_endpoints(self, m):
-        """(x1, x2): source-end column, arrowhead-end column."""
+        """(x1, x2): source-end column, arrowhead-end column. Found
+        messages start mid-air 90 units left of the receiver; lost
+        messages leave mid-air 90 units right of the sender."""
+        if m.src is None:
+            return m.dst.x - 90, m.dst.x
+        if m.dst is None:
+            return m.src.x, m.src.x + 90
         if m.src is m.dst:
             return m.src.x, m.src.x
         to_right = m.dst.x >= m.src.x
@@ -2747,6 +2765,10 @@ class Diagram:
             xs.extend([li.x - li.w / 2, li.x + li.w / 2])
             ys.extend([li.head_y, li.head_y + li.h,
                        self._lifeline_tail_end(li)])
+        for m in self.messages:
+            if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
+                xs.extend([m.x1, m.x2])
+                ys.append(m.y)
         if not xs:
             return None
         return min(xs), min(ys), max(xs), max(ys)
@@ -3075,6 +3097,10 @@ class Diagram:
             xs.extend([li.x - li.w / 2, li.x + li.w / 2])
             ys.extend([li.head_y - 6, li.head_y + li.h,
                        self._lifeline_tail_end(li)])
+        for m in self.messages:
+            if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
+                xs.extend([m.x1, m.x2])
+                ys.append(m.y)
 
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
