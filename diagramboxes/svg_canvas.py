@@ -658,16 +658,34 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                     break
                 acc += seg
 
-        # Per-end labels (SysML v1 §3.5) — collision-aware placement
+        # Per-end labels (SysML v1 §3.5) — collision-aware placement;
+        # '\n'-joined labels render as stacked halo rows (v2 metamodel)
+        # and anchor OUTSIDE the endpoint so the stack never sits on the
+        # box it names (Fig 15: the inward anchor erases the box's text)
         spos, tpos = edge_end_label_positions(pts)
-        for lab, pos, vert in ((e.source_label, spos, pts[0][0] == pts[1][0]),
-                               (e.target_label, tpos, pts[-1][0] == pts[-2][0])):
+        for lab, pos, vert, outward in (
+                (e.source_label, spos, pts[0][0] == pts[1][0],
+                 (pts[0], pts[1])),
+                (e.target_label, tpos, pts[-1][0] == pts[-2][0],
+                 (pts[-1], pts[-2]))):
             if not lab or pos is None:
                 continue
-            pos = clear_label_pos(pos, len(lab), keep_away, used_labels,
-                                  anchor='start' if vert else 'middle')
-            c.add_label(pos[0], pos[1], lab,
-                        anchor='start' if vert else 'middle')
+            rows = str(lab).split('\n')
+            if len(rows) > 1:
+                dx, dy = (outward[0][0] - outward[1][0],
+                          outward[0][1] - outward[1][1])
+                L = (dx * dx + dy * dy) ** 0.5 or 1
+                pos = (pos[0] - dx / L * 22, pos[1] - dy / L * 22)
+
+            def _place(p):
+                return clear_label_pos(p, max(len(r) for r in rows),
+                                       keep_away, used_labels,
+                                       anchor='start' if vert else 'middle')
+            pos = _place(pos)
+            base = pos[1] - (len(rows) - 1) * 6
+            for i, row in enumerate(rows):
+                c.add_label(pos[0], base + i * 6, row,
+                            anchor='start' if vert else 'middle')
 
         # Item flow (SysML v1 §4.9): filled triangular arrowhead along the
         # connector with the item type as a halo label near it.  The halo
@@ -769,12 +787,25 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
             spos, tpos = edge_end_label_positions([(sx, sy), (tx, ty)])
             if spos is not None and tpos is not None and (sx != tx or sy != ty):
                 vert = sx == tx
+
+                def _stacked(label, pos):
+                    """Support '\n'-joined end labels (SysML v2 metamodel
+                    figures stack '+/name', multiplicity, '{subsets ...}'
+                    at one end): render as stacked halo rows anchored at
+                    the same x; the whole stack registers as one claim."""
+                    rows = str(label).split('\n')
+                    base = pos[1] - (len(rows) - 1) * 6
+                    for i, row in enumerate(rows):
+                        c.add_label(pos[0], base + i * 6, row,
+                                    anchor='start' if vert else 'middle')
+                    if used_labels is not None:
+                        wrow = max(len(r) for r in rows)
+                        used_labels.add((pos[0] if vert else pos[0] - wrow, base, wrow * 2))
+
                 if e.source_label:
-                    c.add_label(spos[0], spos[1], e.source_label,
-                                anchor='start' if vert else 'middle')
+                    _stacked(e.source_label, spos)
                 if e.target_label:
-                    c.add_label(tpos[0], tpos[1], e.target_label,
-                                anchor='start' if vert else 'middle')
+                    _stacked(e.target_label, tpos)
         if getattr(e, 'item_flow', None):
             r = route_point_at([(sx, sy), (tx, ty)],
                                getattr(e, 'item_position', 0.5))

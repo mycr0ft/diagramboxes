@@ -38,7 +38,7 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_seq_fragment, \
     draw_seq_constraint, \
     draw_par_param, draw_usecase_node, draw_actor_stick, \
-    draw_line, draw_arrowhead
+    draw_line, draw_arrowhead, edge_end_label_positions
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
     svg_draw_fork_join_node, svg_draw_decision_node, \
@@ -3601,6 +3601,28 @@ class Diagram:
                     max_x = max(max_x, ex2)
                     min_y = min(min_y, ey1)
                     max_y = max(max_y, ey2)
+        # End-label text rows must never clip: count each stacked row's
+        # extent (widest row × 2 units/char, anchor-aware) — the
+        # {subsets ...} stacks of the v2 metamodel figures run wide
+        for e in self.edges:
+            for lab, is_src in ((getattr(e, 'source_label', None), True),
+                                (getattr(e, 'target_label', None), False)):
+                if not lab or len(e.waypoints) < 2:
+                    continue
+                spos, tpos = edge_end_label_positions(e.waypoints)
+                pos = spos if is_src else tpos
+                if pos is None:
+                    continue
+                rows = str(lab).split('\n')
+                wr = max(len(r) for r in rows) * 2
+                if e.waypoints[0][0] == e.waypoints[1][0]:
+                    min_x = min(min_x, pos[0] - 2)
+                    max_x = max(max_x, pos[0] + wr + 2)
+                else:
+                    min_x = min(min_x, pos[0] - wr)
+                    max_x = max(max_x, pos[0] + wr)
+                min_y = min(min_y, pos[1] - 4 - (len(rows) - 1) * 6)
+                max_y = max(max_y, pos[1] + 4)
         pad = 10
         w = int((max_x - min_x + pad * 2) * scale)
         h = int((max_y - min_y + pad * 2) * scale)
