@@ -57,6 +57,18 @@ class PositionHintTest(unittest.TestCase):
         self.assertEqual(sy, a.cy == b.cy and a.cy)  # same row: straight
         self.assertGreater(tx, sx)
 
+    def test_pinned_self_association_routes_loop(self):
+        d = Diagram()
+        a = d.add_node('B', at=(0, 0))
+        d.add_edge(a, a)
+        d.render()
+        e = d.edges[0]
+        self.assertEqual(len(e.waypoints), 4)
+        sx, sy = e.waypoints[0]
+        self.assertEqual(sx, a.x + a.w)   # leaves the right side
+        bx, ly = e.waypoints[-1]
+        self.assertGreater(ly, sy)        # re-enters lower
+
     def test_unpinned_diagram_keeps_auto_layout(self):
         d = Diagram()
         a = d.add_node('A')

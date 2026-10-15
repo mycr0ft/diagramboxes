@@ -1536,6 +1536,8 @@ class Diagram:
     def usecase(self, name, **kw):
         """Use case (§5.5): ellipse with the verb-phrase name inside."""
         n = UseCase(name)
+        if kw.get('at') is not None:
+            n.at = tuple(kw['at'])
         self.nodes.append(n)
         return n
 
@@ -2779,6 +2781,15 @@ class Diagram:
             return all(not self._segment_hits(
                 x1, y1, x2, y2, obstacles)[0] for x1, y1, x2, y2 in segs)
 
+        if s is t:
+            # self-association (e.g. a nested-usage role on itself):
+            # out of the right side, down, back into the lower right
+            sx, sy = s.x + s.w, s.y + s.h // 2
+            ch = s.x + s.w + 18
+            bx = s.x + s.w * 3 // 4
+            ly = s.y + s.h
+            e.route((sx, sy), (ch, sy), (ch, ly), (bx, ly))
+            return
         if abs(s.cy - t.cy) < max(s.h, t.h) and abs(s.cx - t.cx) > 40:
             # same row — anchor the facing vertical sides
             if s.cx < t.cx:
