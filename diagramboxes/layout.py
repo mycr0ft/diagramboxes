@@ -2905,9 +2905,10 @@ class Diagram:
                        self._lifeline_tail_end(li)])
         for m in self.messages:
             if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
-                if self.frame is None or getattr(m, 'attach', None) is False:
-                    # border-attached ends live ON the frame (counting
-                    # them here would widen it); floating ends count
+                if self.frame is None:
+                    # border-attached ends live ON the frame and floating
+                    # crop ends hang OUTSIDE it — both must never widen
+                    # the frame (canvas bounds handle those)
                     xs.extend([m.x1, m.x2])
                 ys.append(m.y)
         for f in self.fragments:
@@ -3251,11 +3252,9 @@ class Diagram:
             ys.extend([li.head_y - 6, li.head_y + li.h,
                        self._lifeline_tail_end(li)])
         for m in self.messages:
-            if getattr(m, 'src', None) is None:
-                xs.extend([m.x1, m.x2])
-                ys.append(m.y)
-            elif getattr(m, 'dst', None) is None:
-                xs.extend([m.x1, m.x2])
+            if getattr(m, 'src', None) is None or getattr(m, 'dst', None) is None:
+                # pad for the arrowhead ticks beyond a floating crop end
+                xs.extend([m.x1 - 8, m.x2 + 8])
                 ys.append(m.y)
         for f in self.fragments:
             lo, hi = self._fragment_span_x(f)

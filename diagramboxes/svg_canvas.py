@@ -432,6 +432,17 @@ def svg_seq_fragment(c, f, span_x):
         c.add_rect(lo, f.y1, hi - lo, f.y2 - f.y1, fill='none')
     pent = f.operator + ((' %s' % f.frag_range) if f.frag_range else '')
     pw = len(pent) * 2 + 6
+    if f.guard:
+        # guard label FIRST — the pentagon (drawn last) repaints its own
+        # white fill over the halo's upper edge instead of the reverse
+        g = '[%s]' % f.guard
+        c.add_label(lo + 4, f.y1 + 9, g, anchor='start')
+    for row, guard in f.operands:
+        if guard:
+            g = '[%s]' % guard
+            c.add_label(lo + 4, row + 9, g, anchor='start')
+    # the operator pentagon last: opaque, so overlapping halos can never
+    # deface its border (vision round 3: guard halo bit the pentagon)
     c.add_polygon([
         (lo, f.y1), (lo + pw + 3, f.y1), (lo + pw, f.y1 + 3),
         (lo + pw, f.y1 + 7), (lo, f.y1 + 7),
@@ -440,16 +451,8 @@ def svg_seq_fragment(c, f, span_x):
     if f.is_ref and f.name:
         c.add_text((lo + hi) / 2, (f.y1 + f.y2) / 2 + 2, f.name,
                    anchor='middle')
-    if f.guard:
-        g = '[%s]' % f.guard
-        # on a lifeline directly above the first enclosed event (§7.9.1):
-        # keep the halo clear of the arrowhead zone below
-        c.add_label(lo + 4, f.y1 + 9, g, anchor='start')
     for row, guard in f.operands:
         c.add_line(lo, row, hi, row, dashed=True)
-        if guard:
-            g = '[%s]' % guard
-            c.add_label(lo + 4, row + 9, g, anchor='start')
 
 
 # ── sequence constraints / state invariants (§7.8) ──
