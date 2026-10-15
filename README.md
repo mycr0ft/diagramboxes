@@ -340,7 +340,8 @@ mans = d.add_lifeline('mans : MANS')
 d.seq_async(fc, mans, y=30, label='measureAltitude')   # solid, open arrow
 d.seq_sync(fc, mans, y=44, label='fireThrusters')       # solid, filled arrow
 d.seq_reply(mans, fc, y=56)                             # dashed, open arrow
-
+d.seq_found(fc, y=14, label='e( )')    # enters from the frame border
+d.seq_lost(fc, y=58, label='x( ) : r', to_right=False)  # leaves to the border
 driver = d.add_lifeline('mansdd : MANS Device Driver', created=True)
 d.seq_create(fc, driver, label='initializeMANS')        # lands at the head
 d.seq_exec(fc, 44, 60)                                  # thin exec rectangle
