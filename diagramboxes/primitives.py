@@ -1130,6 +1130,43 @@ def draw_par_param(c, p):
         c.set_text(p.x + p.w + 2, ly, p.name)
 
 
+def draw_usecase_node(c, n):
+    """Use case ellipse (§5.5, Figure 5.1): outline with the verb-phrase
+    name centered inside."""
+    rx = n.w / 2.0
+    ry = n.h / 2.0
+    cx = n.x + rx
+    cy = n.y + ry
+    steps = int(max(28, rx + ry))
+    pts = [(int(cx + rx * cos(2 * pi * i / steps)),
+            int(cy + ry * sin(2 * pi * i / steps)))
+           for i in range(steps + 1)]
+    for i in range(steps):
+        for px, py in line(*pts[i], *pts[i + 1]):
+            c.set(px, py)
+    c.set_text(int(cx - len(n.name) // 2), int(cy - 1), n.name)
+
+
+def draw_actor_stick(c, n):
+    """Actor stick figure (§5.7, Figure 5.1): head circle, body, arms,
+    legs — the name printed BENEATH the figure."""
+    cx = n.x + n.w // 2
+    hy = n.y + 3                       # head center; r = 3
+    for dy in range(-3, 4):
+        for dx in range(-3, 4):
+            if 2 <= round((dx * dx + dy * dy) ** 0.5) <= 3:
+                c.set(cx + dx, hy + dy)
+    for px, py in line(cx, hy + 3, cx, hy + 10):       # body
+        c.set(px, py)
+    for px, py in line(cx - 5, hy + 6, cx + 5, hy + 6):  # arms
+        c.set(px, py)
+    for px, py in line(cx, hy + 10, cx - 4, hy + 16):    # legs
+        c.set(px, py)
+    for px, py in line(cx, hy + 10, cx + 4, hy + 16):
+        c.set(px, py)
+    c.set_text(int(cx - len(n.name) // 2), n.y + 17, n.name)
+
+
 def draw_diagram_frame(c, x1, y1, x2, y2, header):
     """Enclosing SysML v1 diagram-kind frame: border rectangle with the
     header string in a strip along the top edge (Delligatti §2.4/§3.3)."""

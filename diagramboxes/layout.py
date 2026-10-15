@@ -37,7 +37,7 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_seq_head, draw_seq_exec, draw_seq_message, draw_destruction_x, \
     draw_seq_fragment, \
     draw_seq_constraint, \
-    draw_par_param, \
+    draw_par_param, draw_usecase_node, draw_actor_stick, \
     draw_line, draw_arrowhead
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
@@ -46,6 +46,7 @@ from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg
     svg_seq_head, svg_seq_exec, svg_seq_message, svg_seq_self_message, \
     svg_par_param, \
     svg_seq_destruction, svg_seq_fragment, svg_seq_constraint, \
+    svg_usecase_node, svg_actor_stick, \
     svg_draw_interface
 
 _MIN_PORT_SPACING = 8
@@ -511,6 +512,42 @@ class ParParam(Node):
     def _calc_size(self):
         self.w = PAR_PARAM_S
         self.h = PAR_PARAM_S
+
+
+UC_BODY_H = 16   # rows of the use case ellipse's interior (§5.5)
+
+
+class UseCase(Node):
+    """A use case (SysML v1 §5.5, Figure 5.1): an ellipse with the
+    verb-phrase name displayed INSIDE."""
+
+    def __init__(self, name):
+        self.is_use_case = True
+        super().__init__(name)
+
+    def _calc_size(self):
+        self.w = max(len(self.name) * 2 + 8, 34)
+        self.h = UC_BODY_H
+
+
+class Actor(Node):
+    """An actor (SysML v1 §5.7, Figure 5.1): a stick figure with the
+    name printed BENEATH (``is_stick_figure``), or a plain rectangle
+    carrying the «actor» stereotype keyword — either is legal for any
+    type of actor, person or system."""
+
+    def __init__(self, name, stick_figure=True):
+        self.is_actor = True
+        self.is_stick_figure = stick_figure
+        super().__init__(name,
+                         stereotypes=None if stick_figure else ['actor'])
+
+    def _calc_size(self):
+        if not self.is_stick_figure:
+            super()._calc_size()
+            return
+        self.w = max(16, len(self.name) * 2 + 2)
+        self.h = 22      # figure rows ~16 + the name beneath
 
 
 class Comment:
@@ -1486,6 +1523,53 @@ class Diagram:
                      owner=owner)
         self.par_params.append(p)
         return p
+
+    def usecase(self, name, **kw):
+        """Use case (§5.5): ellipse with the verb-phrase name inside."""
+        n = UseCase(name)
+        self.nodes.append(n)
+        return n
+
+    def actor(self, name, stick_figure=True):
+        """Actor (§5.7): stick figure + name beneath, or the rectangle
+        notation with the «actor» keyword (``stick_figure=False``)."""
+        n = Actor(name, stick_figure=stick_figure)
+        self.nodes.append(n)
+        return n
+
+    def subject(self, name):
+        """System boundary (§5.6): the rectangle enclosing the use
+        cases; the name (a noun phrase) prints at the top inside.
+        Nest use cases in it with ``node.add_child(use_case)``."""
+        n = Node(name)
+        self.nodes.append(n)
+        return n
+
+    def association(self, a, b, **kw):
+        """Actor–use case association (§5.8): plain solid line, no
+        arrowheads. Multiplicity via ``source_label``/``target_label``.
+        (Composite associations between an actor and a use case are
+        illegal on use case diagrams.)"""
+        kw.setdefault('source_style', NONE)
+        kw.setdefault('target_style', NONE)
+        return self.add_edge(a, b, **kw)
+
+    def include(self, src, dst, **kw):
+        """«include» relationship (§5.10): dashed open-arrow line with
+        the keyword floating beside; the TARGET end (arrowhead) is the
+        included use case."""
+        kw.setdefault('line_style', DASHED)
+        kw.setdefault('target_style', OPEN)
+        kw.setdefault('label', '\u00abinclude\u00bb')
+        return self.add_edge(src, dst, **kw)
+
+    def extend(self, src, dst, **kw):
+        """«extend» relationship (§5.11): dashed open-arrow line with
+        the keyword; the SOURCE end (tail) is the extending use case."""
+        kw.setdefault('line_style', DASHED)
+        kw.setdefault('target_style', OPEN)
+        kw.setdefault('label', '\u00abextend\u00bb')
+        return self.add_edge(src, dst, **kw)
 
     def bind(self, a, b, **kw):
         """Binding connector (§9.8): solid line with no arrowheads and no
@@ -3243,11 +3327,16 @@ class Diagram:
         child_nodes = self._child_nodes()
 
         def _draw_node_tree(node):
-            draw_class_box(c, node.x, node.y, node.x + node.w, node.y + node.h,
-                           node.name, node.stereotypes, node.attributes,
-                           rounded=node.rounded, dashed=node.dashed,
-                           compartments=getattr(node, 'compartments', None),
-                           folder=_is_folder(node.stereotypes))
+            if isinstance(node, UseCase):
+                draw_usecase_node(c, node)
+            elif isinstance(node, Actor) and node.is_stick_figure:
+                draw_actor_stick(c, node)
+            else:
+                draw_class_box(c, node.x, node.y, node.x + node.w, node.y + node.h,
+                               node.name, node.stereotypes, node.attributes,
+                               rounded=node.rounded, dashed=node.dashed,
+                               compartments=getattr(node, 'compartments', None),
+                               folder=_is_folder(node.stereotypes))
             for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
@@ -3559,7 +3648,12 @@ class Diagram:
         deferred_port_labels = []
 
         def _svg_node_tree(node):
-            svg_draw_node(c, node)
+            if isinstance(node, UseCase):
+                svg_usecase_node(c, node)
+            elif isinstance(node, Actor) and node.is_stick_figure:
+                svg_actor_stick(c, node)
+            else:
+                svg_draw_node(c, node)
             for p in node.ports:
                 if isinstance(p, (EntryPoint, ExitPoint)):
                     svg_draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))

@@ -418,6 +418,31 @@ band inside the border); owner boxes auto-widen to seat their longest
 parameter label; `node.set_min_height(h)` reserves room for param rows.
 Socket labels print just above the connector leg, inside the frame.
 
+### 4d. Use case diagrams (SysML v1 §5.4–5.11)
+
+Use case ellipses take the verb-phrase name inside; actors draw as stick
+figures with the name beneath (or as «actor» keyword rectangles); the
+system boundary nests its use cases as composite children.
+
+```python
+d.add_frame('uc', element_kind='package', element_name='Behavior')
+sb = d.subject('DellSat-77 Satellite')
+base = sb.add_child(d.usecase('Execute Hohmann transfer'))   # §5.5
+fc  = d.actor('Flight Controller')                            # stick figure §5.7
+sat = d.actor('DellSat-77 Ground Station', stick_figure=False)
+
+d.association(fc, base, source_label='1..1', target_label='0..*')  # §5.8
+inc = sb.add_child(d.usecase('Send command'))
+d.include(base, inc)                                          # «include» §5.10
+sub = sb.add_child(d.usecase('Send real-time command'))
+d.generalize(sub, inc)                                        # §5.5
+d.extend(sb.add_child(d.usecase('Abort via safing')), base)   # «extend» §5.11
+```
+
+Use cases, actors and the boundary round-trip DI/XMI as their own
+`ddKind`s (`UseCase`, `Actor` with `stickFigure`); «include»/«extend»
+round-trip through the edge label.
+
 ### 5. Rendering to SVG
 
 ```python

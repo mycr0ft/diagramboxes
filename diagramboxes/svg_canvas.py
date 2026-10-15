@@ -302,6 +302,14 @@ class SvgCanvas:
             f' fill="{fill}" stroke="{stroke}" />'
         )
 
+    def add_ellipse(self, cx, cy, rx, ry, fill='white', stroke=None):
+        stroke = stroke or self.STROKE
+        self.elements.append(
+            '<ellipse cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"'
+            ' fill="%s" stroke="%s" stroke-width="%g" />'
+            % (self.s(cx), self.s(cy), self.s(rx), self.s(ry),
+               fill, stroke, self.stroke_width))
+
     def add_polyline(self, points, stroke=None, width=None, dashed=False):
         stroke = stroke or self.STROKE
         width = width or self.stroke_width
@@ -439,6 +447,32 @@ def svg_par_param(c, p):
         c.add_label(p.x - 2, ly, p.name, anchor='end')
     else:
         c.add_label(p.x + p.w + 2, ly, p.name, anchor='start')
+
+
+def svg_usecase_node(c, n):
+    """Use case ellipse (§5.5, Figure 5.1) + the verb-phrase name
+    centered inside."""
+    cx = n.x + n.w / 2.0
+    cy = n.y + n.h / 2.0
+    c.add_group()
+    c.add_ellipse(cx, cy, n.w / 2.0, n.h / 2.0)
+    c.add_text(cx, cy + 2, n.name, anchor='middle')
+    c.close_group()
+
+
+def svg_actor_stick(c, n):
+    """Actor stick figure (§5.7, Figure 5.1): head circle, body, arms,
+    legs — the name printed beneath."""
+    cx = n.x + n.w / 2.0
+    hy = n.y + 3.0
+    c.add_group()
+    c.add_circle(cx, hy + 1.0, 3.5, fill='white')
+    c.add_polyline([(cx, hy + 4), (cx, hy + 11)])
+    c.add_polyline([(cx - 6, hy + 7), (cx, hy + 5.5), (cx + 6, hy + 7)])
+    c.add_polyline([(cx, hy + 11), (cx - 4.5, hy + 17)])
+    c.add_polyline([(cx, hy + 11), (cx + 4.5, hy + 17)])
+    c.close_group()
+    c.add_text(cx, n.y + 20, n.name, anchor='middle')
 
 
 def svg_seq_fragment(c, f, span_x):

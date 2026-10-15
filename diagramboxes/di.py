@@ -71,7 +71,7 @@ from diagramboxes.layout import (
     ForkPseudostate, JoinPseudostate, FinalState, TerminatePseudostate,
     HistoryPseudostate, EntryPoint, ExitPoint, StateNode, FramePort, \
     Lifeline, SeqMessage, SeqExec, SeqDestruction, SeqFragment, \
-    SeqConstraint, ParParam,
+    SeqConstraint, ParParam, UseCase, Actor,
 )
 
 __all__ = ["to_di", "from_di", "DI_VERSION", "DI_NS", "DC_NS", "DG_NS"]
@@ -232,6 +232,8 @@ def to_di(diagram):
             d["rounded"] = True
         if getattr(el, "dashed", False):
             d["dashed"] = True
+        if getattr(el, "is_actor", False):
+            d["stickFigure"] = bool(getattr(el, "is_stick_figure", True))
         ports = getattr(el, "ports", None)
         if ports:
             d["ports"] = [_port_dict(p) for p in ports]
@@ -358,7 +360,11 @@ def _shape_from_dict(sd):
     children and substates are wired by from_di's later passes)."""
     kind = sd.get(_DD_KIND, "Node")
     name = sd.get("name", "")
-    if kind == "Comment":
+    if kind == "UseCase":
+        el = UseCase(name)
+    elif kind == "Actor":
+        el = Actor(name, stick_figure=sd.get("stickFigure", True))
+    elif kind == "Comment":
         el = Comment(sd.get("text", ""))
     elif kind == "View":
         el = View(name, stereotypes=sd.get("stereotypes"),
