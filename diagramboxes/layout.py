@@ -39,7 +39,7 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_seq_constraint, \
     draw_par_param, draw_usecase_node, draw_actor_stick, \
     draw_send_signal_node, draw_accept_event_node, draw_wait_time_node, \
-    draw_rake, draw_region_box, \
+    draw_rake, draw_region_box, draw_cube_facets, \
     draw_line, draw_arrowhead, edge_end_label_positions
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
@@ -399,7 +399,7 @@ class Node:
     """
 
     def __init__(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
-                 compartments=None, at=None, chamfer=0):
+                 compartments=None, at=None, chamfer=0, cube=False):
         self.name = name
         self.stereotypes = stereotypes or []
         self.attributes = attributes or []
@@ -409,6 +409,8 @@ class Node:
         self.dashed = dashed
         # 45-degree corner cut (v2 action usage octagon); 0 = off
         self.chamfer = chamfer
+        # UML 2.5.1 ch19 'DeploymentTarget': perspective-view cube facets
+        self.cube = cube
         # §6.8.2 call behavior action: rake glyph in the lower-right
         self.rake = False
         self.ports = []
@@ -1663,6 +1665,35 @@ class Diagram:
         n = self.add_node('%s : %s' % (name, type_), rounded=True)
         return n
 
+    def node(self, name, kinds=(), at=None, **kw):
+        """UML 2.5.1 ch19 DeploymentTarget/Node: a perspective-view cube
+        labeled with the name ('prepended by a colon' for instances).
+        kinds: («device», «executionEnvironment», ...) keyword rows."""
+        return self.add_node(name, stereotypes=list(kinds) or ['node'],
+                             cube=True, at=at, **kw)
+
+    def artifact(self, name, at=None, **kw):
+        """UML 2.5.1 ch19 Artifact: an ordinary Class rectangle with the
+        keyword artifact (19.3.4)."""
+        return self.add_node(name, stereotypes=['artifact'], at=at, **kw)
+
+    def deploy(self, artifact, target, label='deploy'):
+        """Deployment (19.2.4): the Dependency dashed-arrow notation
+        with the deploy keyword, or containment — containment is the
+        caller's choice via add_child()."""
+        e = self.add_edge(artifact, target, line_style=DASHED,
+                          target_style=OPEN,
+                          label='\u00ab%s\u00bb' % label)
+        return e
+
+    def manifest(self, artifact, element):
+        """Manifestation (19.3.x): a dashed line with the manifest
+        keyword (an Abstraction)."""
+        e = self.add_edge(artifact, element, line_style=DASHED,
+                          target_style=OPEN,
+                          label='\u00abmanifest\u00bb')
+        return e
+
     def par_value(self, name, type_, mult=None, default=None, at=None):
         """Value property (§9.7): plain-rectangle node with the string
         ``<value name> : <type> [<mult>] = <default>``. Valid only when
@@ -1750,7 +1781,7 @@ class Diagram:
         return e
 
     def add_node(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
-                 parent=None, compartments=None, at=None, chamfer=0):
+                 parent=None, compartments=None, at=None, chamfer=0, cube=False):
         """Create a new node and register it with the diagram.
 
         Parameters
@@ -1776,7 +1807,7 @@ class Diagram:
             The newly created node.
         """
         n = Node(name, stereotypes, attributes, rounded, dashed,
-                 compartments, at=at, chamfer=chamfer)
+                 compartments, at=at, chamfer=chamfer, cube=cube)
         if parent is not None:
             parent.add_child(n)
         self.nodes.append(n)
@@ -3833,6 +3864,9 @@ class Diagram:
                                compartments=getattr(node, 'compartments', None),
                                folder=_is_folder(node.stereotypes),
                                chamfer=getattr(node, 'chamfer', 0))
+                if getattr(node, 'cube', False):
+                    draw_cube_facets(c, node.x, node.y,
+                                     node.x + node.w, node.y + node.h)
                 if getattr(node, 'rake', False):
                     draw_rake(c, node.x + node.w - 4, node.y + node.h - 3)
             for p in node.ports:

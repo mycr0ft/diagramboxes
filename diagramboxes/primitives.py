@@ -1051,6 +1051,22 @@ def draw_wait_time_node(c, n):
                    y + gh + 3, n.name)
 
 
+def draw_cube_facets(c, x1, y1, x2, y2, dx=7, dy=6):
+    """UML 2.5.1 ch19 Node (DeploymentTarget): the perspective-view
+    cube — the front rectangle plus its top and right facets offset
+    toward the upper right."""
+    # top facet: front-top-left corner skews back, along the back-top
+    # edge, down the back-right edge, and back to the front-bottom-right
+    for ax, ay, bx, by in (
+            (x1, y1, x1 + dx, y1 - dy),
+            (x1 + dx, y1 - dy, x2 + dx, y1 - dy),
+            (x2 + dx, y1 - dy, x2 + dx, y2 - dy),
+            (x2 + dx, y2 - dy, x2, y2),
+            (x2, y1, x2 + dx, y1 - dy)):
+        for px, py in line(ax, ay, bx, by):
+            c.set(px, py)
+
+
 def draw_rake(c, x1, y1):
     """Call behavior rake glyph (§6.8.2): two short parallel diagonals
     in the action's lower-right corner."""

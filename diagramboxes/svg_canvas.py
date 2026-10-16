@@ -978,6 +978,16 @@ def svg_draw_node(c, n):
         if n.dashed:
             kw['dashed'] = True
         c.add_rect(n.x, n.y, n.w, n.h, **kw)
+    if getattr(n, 'cube', False):
+        # UML 2.5.1 ch19 Node: perspective-view cube facets (§19.2.4)
+        dx, dy = 7, 6
+        c.add_group({'class': 'nodecube'})
+        c.add_polyline([(n.x, n.y), (n.x + dx, n.y - dy),
+                        (n.x + n.w + dx, n.y - dy),
+                        (n.x + n.w + dx, n.y + n.h - dy)])
+        c.add_polyline([(n.x + n.w + dx, n.y + n.h - dy), (n.x + n.w, n.y + n.h)])
+        c.add_polyline([(n.x + n.w, n.y), (n.x + n.w + dx, n.y - dy)])
+        c.close_group()
     if _is_folder(getattr(n, 'stereotypes', None)):
         # Package folder tab (§10.4): rectangle on the upper-left side
         tw = min(10, n.w // 4) if n.w > 26 else max(4, n.w // 4)
