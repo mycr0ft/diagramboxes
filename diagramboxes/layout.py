@@ -878,8 +878,8 @@ class InitialPseudostate(StartNode):
     the single automatic transition into the first real state.
     """
 
-    def __init__(self, name='initial'):
-        super().__init__(name=name)
+    def __init__(self, name='initial', at=None):
+        super().__init__(name=name, at=at)
 
 
 class JunctionPseudostate(StartNode):
@@ -891,8 +891,8 @@ class JunctionPseudostate(StartNode):
     through the same primitive as :class:`StartNode`.
     """
 
-    def __init__(self, name=''):
-        super().__init__(name=name)
+    def __init__(self, name='', at=None):
+        super().__init__(name=name, at=at)
 
 
 class ChoicePseudostate(DecisionNode):
@@ -2048,7 +2048,7 @@ class Diagram:
 
     # ── state-machine pseudostates ──
 
-    def add_initial(self, name='initial', parent=None):
+    def add_initial(self, name='initial', parent=None, at=None):
         """Add a state-machine initial pseudostate (filled black circle).
 
         Parameters
@@ -2062,24 +2062,26 @@ class Diagram:
         -------
         InitialPseudostate
         """
-        n = InitialPseudostate(name=name)
+        n = InitialPseudostate(name=name, at=at)
         if parent is not None:
-            n.parent = parent
+            n.parent = parent  # drawn inside the composite (v0.4.0)
         self.activities.append(n)
         return n
 
-    def add_junction(self, name=''):
+    def add_junction(self, name='', parent=None, at=None):
         """Add a state-machine junction pseudostate (filled black circle).
 
         Returns
         -------
         JunctionPseudostate
         """
-        n = JunctionPseudostate(name=name)
+        n = JunctionPseudostate(name=name, at=at)
+        if parent is not None:
+            n.parent = parent
         self.activities.append(n)
         return n
 
-    def add_choice(self, name=''):
+    def add_choice(self, name='', parent=None, at=None):
         """Add a state-machine choice pseudostate (diamond).
 
         Returns
@@ -2159,7 +2161,7 @@ class Diagram:
         return n
 
     def add_state(self, name, stereotypes=None, attributes=None,
-                  substates=None, dashed=False):
+                  substates=None, dashed=False, at=None):
         """Add a state node with rounded corners and default ``«state»``.
 
         Returns
@@ -2168,6 +2170,8 @@ class Diagram:
         """
         n = StateNode(name, stereotypes=stereotypes, attributes=attributes,
                       substates=substates, dashed=dashed)
+        if at is not None:
+            n.at = tuple(at)
         self.nodes.append(n)
         return n
 
