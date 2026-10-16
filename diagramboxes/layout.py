@@ -3877,11 +3877,11 @@ class Diagram:
                                    compartments=getattr(child, 'compartments', None),
                                    folder=_is_folder(child.stereotypes),
                                    chamfer=getattr(child, 'chamfer', 0))
-                for p in child.ports:
-                    for i in p.interfaces:
+                    for p in child.ports:
+                        for i in p.interfaces:
+                            draw_interface(c, i)
+                    for i in child.interfaces:
                         draw_interface(c, i)
-                for i in child.interfaces:
-                    draw_interface(c, i)
             else:
                 draw_view_box(c, v.x, v.y, v.x + v.w, v.y + v.h, v.name, v.stereotypes, v.attributes, dashed=v.dashed)
                 for child in v.children:
