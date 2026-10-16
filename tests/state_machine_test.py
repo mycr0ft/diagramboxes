@@ -114,3 +114,37 @@ class StateMachineTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class RegionTest(unittest.TestCase):
+    """§8.7: orthogonal regions — dashed rectangles with a floating
+    corner label, children inside, no header tab; round-trips DI."""
+
+    def test_region_renders_dashed_with_corner_label(self):
+        d = Diagram()
+        r1 = d.add_region('Streaming / Suspended')
+        s = d.add_state('Streaming')
+        r1.add_child(s)
+        d.render()
+        svg = d.render_svg()
+        # a dashed 4-corner rect exists among the polygon points
+        import re
+        self.assertIn('stroke-dasharray', svg)
+        self.assertIn('Streaming / Suspended', svg)
+
+    def test_region_children_and_round_trip(self):
+        d = Diagram()
+        r1 = d.add_region('R1')
+        a = d.add_state('S1')
+        r1.add_child(a)
+        payload = __import__('diagramboxes').to_di(d)
+        d2 = __import__('diagramboxes').from_di(payload)
+        regs = [v for v in d2.views
+                if type(v).__name__ == 'Region']
+        self.assertEqual(len(regs), 1)
+        self.assertTrue(any(
+            getattr(c, 'name', None) == 'S1' for c in regs[0].children),
+            'region children lost in round-trip')
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -65,7 +65,7 @@ Round trip::
 from __future__ import annotations
 
 from diagramboxes.layout import (
-    Diagram, Node, Edge, Port, Comment, View,
+    Diagram, Node, Edge, Port, Comment, View, Region,
     StartNode, DoneNode, TerminateNode, ForkJoinNode, DecisionNode, \
     SendSignalNode, AcceptEventNode, WaitTimeNode,
     InitialPseudostate, JunctionPseudostate, ChoicePseudostate,
@@ -378,6 +378,10 @@ def _shape_from_dict(sd):
         el = View(name, stereotypes=sd.get("stereotypes"),
                   attributes=sd.get("attributes"),
                   dashed=sd.get("dashed", False))
+    elif kind == "Region":
+        el = Region(name, stereotypes=sd.get("stereotypes"),
+                    attributes=sd.get("attributes"),
+                    dashed=sd.get("dashed", True))
     elif kind == "StateNode":
         el = StateNode(name, stereotypes=sd.get("stereotypes"),
                        attributes=sd.get("attributes"),

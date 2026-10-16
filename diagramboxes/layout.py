@@ -39,7 +39,7 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_seq_constraint, \
     draw_par_param, draw_usecase_node, draw_actor_stick, \
     draw_send_signal_node, draw_accept_event_node, draw_wait_time_node, \
-    draw_rake, \
+    draw_rake, draw_region_box, \
     draw_line, draw_arrowhead, edge_end_label_positions
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
@@ -50,7 +50,7 @@ from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg
     svg_seq_destruction, svg_seq_fragment, svg_seq_constraint, \
     svg_usecase_node, svg_actor_stick, \
     svg_draw_send_signal_node, svg_draw_accept_event_node, \
-    svg_draw_wait_time_node, svg_draw_rake, \
+    svg_draw_wait_time_node, svg_draw_rake, svg_draw_region_box, \
     svg_draw_interface
 
 _MIN_PORT_SPACING = 8
@@ -1163,6 +1163,26 @@ class View:
         self._calc_size()
 
 
+class Region(View):
+    """A state-machine region (§8.7): a plain dashed rectangle — no
+    header tab — with the optional region name floating inside a
+    corner.  Regions model orthogonal (concurrent) sub-parts of a
+    state machine; a transition between vertices in different regions
+    is illegal (§8.7)."""
+
+    def __init__(self, name='', stereotypes=None, attributes=None,
+                 dashed=True):
+        super().__init__(name, stereotypes=stereotypes,
+                         attributes=attributes, dashed=dashed)
+
+    def _tab_height(self):
+        return 0        # no header band: content starts at the top edge
+
+    @property
+    def content_y(self):
+        return self.y
+
+
 class Edge:
     """A directed or undirected connection between two nodes (or ports).
 
@@ -2159,6 +2179,19 @@ class Diagram:
         n = HistoryPseudostate(name=name, deep=deep, r=r)
         self.activities.append(n)
         return n
+
+    def add_region(self, name='', **kw):
+        """Add a state-machine region (§8.7): a dashed rectangle with
+        the name floating inside a corner.  Region vertices live in the
+        region (children); transitions between regions are illegal.
+
+        Returns
+        -------
+        Region
+        """
+        r = Region(name, **kw)
+        self.views.append(r)
+        return r
 
     def add_state(self, name, stereotypes=None, attributes=None,
                   substates=None, dashed=False, at=None):
@@ -3835,23 +3868,38 @@ class Diagram:
         for com in self.comments:
             draw_comment_box(c, com.x, com.y, com.x + com.w, com.y + com.h, com.text)
         for v in self.views:
-            draw_view_box(c, v.x, v.y, v.x + v.w, v.y + v.h, v.name, v.stereotypes, v.attributes, dashed=v.dashed)
-            for child in v.children:
-                draw_class_box(c, child.x, child.y, child.x + child.w, child.y + child.h,
-                               child.name, child.stereotypes, child.attributes, rounded=child.rounded, dashed=child.dashed,
-                               compartments=getattr(child, 'compartments', None),
-                               folder=_is_folder(child.stereotypes))
+            if isinstance(v, Region):
+                draw_region_box(c, v)
+                for child in v.children:
+                    draw_class_box(c, child.x, child.y, child.x + child.w, child.y + child.h,
+                                   child.name, child.stereotypes, child.attributes,
+                                   rounded=child.rounded, dashed=child.dashed,
+                                   compartments=getattr(child, 'compartments', None),
+                                   folder=_is_folder(child.stereotypes),
+                                   chamfer=getattr(child, 'chamfer', 0))
                 for p in child.ports:
-                    if isinstance(p, (EntryPoint, ExitPoint)):
-                        draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
-                    else:
-                        draw_port_box(c, p.x, p.y, p.label, side=p.side,
-                                  direction=p.direction,
-                                  label_inside=getattr(p, 'label_inside', False))
                     for i in p.interfaces:
                         draw_interface(c, i)
                 for i in child.interfaces:
                     draw_interface(c, i)
+            else:
+                draw_view_box(c, v.x, v.y, v.x + v.w, v.y + v.h, v.name, v.stereotypes, v.attributes, dashed=v.dashed)
+                for child in v.children:
+                    draw_class_box(c, child.x, child.y, child.x + child.w, child.y + child.h,
+                                   child.name, child.stereotypes, child.attributes, rounded=child.rounded, dashed=child.dashed,
+                                   compartments=getattr(child, 'compartments', None),
+                                   folder=_is_folder(child.stereotypes))
+                    for p in child.ports:
+                        if isinstance(p, (EntryPoint, ExitPoint)):
+                            draw_entry_exit_point(c, p.cx, p.cy, PORT_W // 2, label=p.label, kind=getattr(p, 'kind', 'entry'))
+                        else:
+                            draw_port_box(c, p.x, p.y, p.label, side=p.side,
+                                          direction=p.direction,
+                                          label_inside=getattr(p, 'label_inside', False))
+                        for i in p.interfaces:
+                            draw_interface(c, i)
+                    for i in child.interfaces:
+                        draw_interface(c, i)
         for p in self.frame_ports:
             draw_port_box(c, p.x, p.y, p.label, side=p.side,
                           direction=p.direction,
@@ -4208,7 +4256,10 @@ class Diagram:
         for com in self.comments:
             svg_draw_comment(c, com)
         for v in self.views:
-            svg_draw_view(c, v)
+            if isinstance(v, Region):
+                svg_draw_region_box(c, v)
+            else:
+                svg_draw_view(c, v)
             for child in v.children:
                 svg_draw_node(c, child)
                 for p in child.ports:

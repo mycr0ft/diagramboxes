@@ -1059,6 +1059,18 @@ def draw_rake(c, x1, y1):
             c.set(px, py)
 
 
+def draw_region_box(c, r):
+    """State-machine region (§8.7): a plain dashed rectangle with the
+    region name floating inside the top-right corner (no header tab)."""
+    x1, y1, x2, y2 = r.x, r.y, r.x + r.w, r.y + r.h
+    _draw_dashed_line(c, x1, y1, x2, y1)
+    _draw_dashed_line(c, x2, y1, x2, y2)
+    _draw_dashed_line(c, x2, y2, x1, y2)
+    _draw_dashed_line(c, x1, y2, x1, y1)
+    if r.name:
+        c.set_text(x2 - len(r.name) - 2, y1 + 3, r.name)
+
+
 def draw_history_node(c, cx, cy, r, deep=False):
     """Draw a shallow- or deep-history pseudostate circle with an inner label.
 

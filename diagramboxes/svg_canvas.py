@@ -931,6 +931,16 @@ def svg_draw_rake(c, x1, y1):
         c.add_line(x1 - 8 + dx, y1 - 1, x1 - 4 + dx, y1 - 8)
 
 
+def svg_draw_region_box(c, r):
+    """State-machine region (§8.7): dashed rectangle, name floating
+    inside the top-right corner."""
+    x1, y1, x2, y2 = r.x, r.y, r.x + r.w, r.y + r.h
+    c.add_polygon([(x1, y1), (x2, y1), (x2, y2), (x1, y2)],
+                  fill='white', dashed=True)
+    if r.name:
+        c.add_text(x2 - 2 - len(r.name) * 2, y1 + 10, r.name)
+
+
 def svg_draw_history_node(c, cx, cy, r, deep=False):
     """Shallow- or deep-history pseudostate.
 
