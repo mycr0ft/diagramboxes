@@ -399,7 +399,7 @@ class Node:
     """
 
     def __init__(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
-                 compartments=None, at=None):
+                 compartments=None, at=None, chamfer=0):
         self.name = name
         self.stereotypes = stereotypes or []
         self.attributes = attributes or []
@@ -407,6 +407,8 @@ class Node:
         self.interfaces = []   # standalone lollipop/socket symbols (no port)
         self.rounded = rounded
         self.dashed = dashed
+        # 45-degree corner cut (v2 action usage octagon); 0 = off
+        self.chamfer = chamfer
         # §6.8.2 call behavior action: rake glyph in the lower-right
         self.rake = False
         self.ports = []
@@ -833,11 +835,13 @@ class DecisionNode:
         Optional label shown inside the diamond.
     """
 
-    def __init__(self, name='', size=28, at=None):
+    def __init__(self, name='', size=28, at=None, filled=False):
         self.name = name
         self.size = size
         self.w = size
         self.h = size
+        # v2 start node: a small SOLID diamond (Intro deck p56/p58)
+        self.filled = filled
         self.x = self.y = 0
         self.parent = None  # composite-structure parent (v0.4.0)
         self.at = tuple(at) if at is not None else None
@@ -1714,7 +1718,7 @@ class Diagram:
         return e
 
     def add_node(self, name, stereotypes=None, attributes=None, rounded=False, dashed=False,
-                 parent=None, compartments=None, at=None):
+                 parent=None, compartments=None, at=None, chamfer=0):
         """Create a new node and register it with the diagram.
 
         Parameters
@@ -1740,7 +1744,7 @@ class Diagram:
             The newly created node.
         """
         n = Node(name, stereotypes, attributes, rounded, dashed,
-                 compartments, at=at)
+                 compartments, at=at, chamfer=chamfer)
         if parent is not None:
             parent.add_child(n)
         self.nodes.append(n)
@@ -1998,6 +2002,16 @@ class Diagram:
             label = '[%s]' % guard
         return self.add_edge(source, target, line_style='dashed',
                              label=label, **kw)
+
+    def action_start(self, size=14, parent=None, at=None):
+        """Add a v2 action start node: a small SOLID black diamond
+        (Intro deck p56, matching the deck's own labeled 'start' node).
+        """
+        n = DecisionNode('', size=size, at=at, filled=True)
+        if parent is not None:
+            n.parent = parent
+        self.activities.append(n)
+        return n
 
     def add_merge(self, name='', size=28, parent=None, at=None):
         """Add an activity merge node (diamond).
@@ -3693,7 +3707,8 @@ class Diagram:
                                node.name, node.stereotypes, node.attributes,
                                rounded=node.rounded, dashed=node.dashed,
                                compartments=getattr(node, 'compartments', None),
-                               folder=_is_folder(node.stereotypes))
+                               folder=_is_folder(node.stereotypes),
+                               chamfer=getattr(node, 'chamfer', 0))
                 if getattr(node, 'rake', False):
                     draw_rake(c, node.x + node.w - 4, node.y + node.h - 3)
             for p in node.ports:
@@ -3723,7 +3738,8 @@ class Diagram:
             elif isinstance(a, ForkJoinNode):
                 draw_fork_join_node(c, a.x, a.y, a.x + a.w, a.y + a.h)
             elif isinstance(a, DecisionNode):
-                draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
+                draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name,
+                                   filled=getattr(a, 'filled', False))
             elif isinstance(a, HistoryPseudostate):
                 draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
             elif isinstance(a, SendSignalNode):
@@ -3781,7 +3797,8 @@ class Diagram:
             elif isinstance(a, ForkJoinNode):
                 draw_fork_join_node(c, a.x, a.y, a.x + a.w, a.y + a.h)
             elif isinstance(a, DecisionNode):
-                draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
+                draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name,
+                                   filled=getattr(a, 'filled', False))
             elif isinstance(a, HistoryPseudostate):
                 draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
             elif isinstance(a, SendSignalNode):
@@ -4094,7 +4111,8 @@ class Diagram:
             elif isinstance(a, ForkJoinNode):
                 svg_draw_fork_join_node(c, a.x, a.y, a.x + a.w, a.y + a.h)
             elif isinstance(a, DecisionNode):
-                svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
+                svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name,
+                                       filled=getattr(a, 'filled', False))
             elif isinstance(a, HistoryPseudostate):
                 svg_draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
             elif isinstance(a, SendSignalNode):
@@ -4163,7 +4181,8 @@ class Diagram:
             elif isinstance(a, ForkJoinNode):
                 svg_draw_fork_join_node(c, a.x, a.y, a.x + a.w, a.y + a.h)
             elif isinstance(a, DecisionNode):
-                svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name)
+                svg_draw_decision_node(c, a.cx, a.cy, a.size // 2, a.name,
+                                       filled=getattr(a, 'filled', False))
             elif isinstance(a, HistoryPseudostate):
                 svg_draw_history_node(c, a.cx, a.cy, a.r, deep=a.deep)
             elif isinstance(a, SendSignalNode):

@@ -122,5 +122,34 @@ class ActivityNotationTest(unittest.TestCase):
                               if getattr(n, 'rake', False)]), 1)
 
 
+    def test_chamfer_octagon_and_filled_start_diamond(self):
+        # v2 action usage = octagon (45-deg chamfer); v2 start = solid
+        # diamond (Intro deck p56)
+        d = Diagram()
+        a = d.add_node('generateTorque', stereotypes=['perform'],
+                       chamfer=8, at=(0, 0))
+        st = d.action_start(size=7, at=(60, 0))
+        d.object_flow(st, a)
+        svg = d.render_svg()
+        import re
+        polys = re.findall(r'<polygon points="([^"]+)"', svg)
+        self.assertTrue(any(len(p.split()) == 8 for p in polys),
+                        'no 8-point octagon in SVG')
+        self.assertIn('fill="black"', svg)     # the solid start diamond
+        d.render()
+        self.assertEqual((a.x, a.y), (0, 0))
+        # the start diamond round-trips filled through both projections
+        payload = to_di(d)
+        d2 = from_di(payload)
+        starts = [n for n in d2.activities if getattr(n, 'filled', False)]
+        self.assertEqual(len(starts), 1)
+        octs = [n for n in d2.nodes if getattr(n, 'chamfer', 0) == 8]
+        self.assertEqual(len(octs), 1)
+        xmi = to_di_xmi(payload)
+        d3 = from_di(from_di_xmi(xmi))
+        self.assertTrue(any(getattr(n, 'filled', False) for n in d3.activities))
+        self.assertTrue(any(getattr(n, 'chamfer', 0) == 8 for n in d3.nodes))
+
+
 if __name__ == '__main__':
     unittest.main()

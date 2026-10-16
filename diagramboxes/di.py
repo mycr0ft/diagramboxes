@@ -232,6 +232,8 @@ def to_di(diagram):
             d["compartments"] = [[t, list(ls)] for t, ls in comp]
         if getattr(el, "rounded", False):
             d["rounded"] = True
+        if getattr(el, "chamfer", 0):
+            d["chamfer"] = getattr(el, "chamfer")
         if getattr(el, "dashed", False):
             d["dashed"] = True
         if getattr(el, "is_actor", False):
@@ -260,6 +262,8 @@ def to_di(diagram):
             size = getattr(el, "size", 28)
             if size != 28:
                 d["size"] = size
+            if getattr(el, "filled", False):
+                d["filled"] = True
         if getattr(el, "rake", False):
             d["rake"] = True
         if isinstance(el, Comment):
@@ -402,7 +406,10 @@ def _shape_from_dict(sd):
                   attributes=sd.get("attributes"),
                   rounded=sd.get("rounded", False),
                   dashed=sd.get("dashed", False),
-                  compartments=sd.get("compartments"))
+                  compartments=sd.get("compartments"),
+                  chamfer=sd.get("chamfer", 0))
+    if kind == "DecisionNode" and sd.get("filled"):
+        el.filled = True
     b = sd.get("bounds") or [0, 0, 0, 0]
     el.x, el.y, el.w, el.h = b
     if sd.get("rake") and hasattr(el, "rake"):
@@ -449,6 +456,10 @@ def _shape_xml(sd, indent):
         sattrs.append('dashed="true"')
     if sd.get("rake"):
         sattrs.append('rake="true"')
+    if sd.get("chamfer"):
+        sattrs.append('chamfer="%g"' % sd["chamfer"])
+    if sd.get("filled"):
+        sattrs.append('filled="true"')
     lines = ['%s<di:Shape xmi:id="%s" %s>' % (indent, eid, " ".join(sattrs))]
     lines.append(_bounds_xml(sd.get("bounds") or [0, 0, 0, 0], indent + "  "))
     name = sd.get("name")
@@ -520,6 +531,13 @@ def _parse_shape_element(el):
         sd["dashed"] = True
     if el.get("rake") == "true":
         sd["rake"] = True
+    if el.get("chamfer"):
+        try:
+            sd["chamfer"] = int(float(el.get("chamfer")))
+        except ValueError:
+            pass
+    if el.get("filled") == "true":
+        sd["filled"] = True
     b = el.find("bounds")
     if b is not None:
         sd["bounds"] = [float(b.get("x", 0)), float(b.get("y", 0)),

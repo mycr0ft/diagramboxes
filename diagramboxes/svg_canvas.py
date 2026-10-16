@@ -870,10 +870,10 @@ def svg_draw_fork_join_node(c, x1, y1, x2, y2):
     c.add_rect(x1, y1, x2 - x1, y2 - y1, fill=c.STROKE)
 
 
-def svg_draw_decision_node(c, cx, cy, size, name=''):
-    """Diamond polygon — activity decision/merge node."""
+def svg_draw_decision_node(c, cx, cy, size, name='', filled=False):
+    """Diamond polygon — decision/merge (``filled``: the v2 start node)."""
     pts = [(cx, cy - size), (cx + size, cy), (cx, cy + size), (cx - size, cy)]
-    c.add_polygon(pts, fill='white')
+    c.add_polygon(pts, fill='black' if filled else 'white')
     if name:
         c.add_text(cx, cy + 4, name, anchor='middle')
 
@@ -943,12 +943,23 @@ def svg_draw_entry_exit_point(c, cx, cy, r, label=None, kind='entry'):
 
 def svg_draw_node(c, n):
     """Draw a node box with stereotypes, name, and compartments."""
-    kw = {}
-    if n.rounded:
-        kw['rx'] = kw['ry'] = min(ROUNDED_RADIUS, n.w // 4, n.h // 4)
-    if n.dashed:
-        kw['dashed'] = True
-    c.add_rect(n.x, n.y, n.w, n.h, **kw)
+    chamfer = getattr(n, 'chamfer', 0)
+    if chamfer:
+        # 45-degree chamfered octagon — the v2 action usage shape
+        ch = min(chamfer, n.w // 4, n.h // 4)
+        pts = [(n.x + ch, n.y), (n.x + n.w - ch, n.y),
+               (n.x + n.w, n.y + ch), (n.x + n.w, n.y + n.h - ch),
+               (n.x + n.w - ch, n.y + n.h), (n.x + ch, n.y + n.h),
+               (n.x, n.y + n.h - ch), (n.x, n.y + ch)]
+        c.add_polygon(pts, **({'dashed': True} if n.dashed
+                              else {'fill': 'white'}))
+    else:
+        kw = {}
+        if n.rounded:
+            kw['rx'] = kw['ry'] = min(ROUNDED_RADIUS, n.w // 4, n.h // 4)
+        if n.dashed:
+            kw['dashed'] = True
+        c.add_rect(n.x, n.y, n.w, n.h, **kw)
     if _is_folder(getattr(n, 'stereotypes', None)):
         # Package folder tab (§10.4): rectangle on the upper-left side
         tw = min(10, n.w // 4) if n.w > 26 else max(4, n.w // 4)

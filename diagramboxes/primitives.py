@@ -980,14 +980,23 @@ def draw_fork_join_node(c, x1, y1, x2, y2):
             c.set(dx, dy)
 
 
-def draw_decision_node(c, cx, cy, size, name=''):
-    """Draw a diamond — decision/merge node."""
-    pts = [(cx, cy - size), (cx + size, cy), (cx, cy + size), (cx - size, cy)]
-    for i in range(4):
-        x1, y1 = pts[i]
-        x2, y2 = pts[(i + 1) % 4]
-        for px, py in line(x1, y1, x2, y2):
-            c.set(px, py)
+def draw_decision_node(c, cx, cy, size, name='', filled=False):
+    """Draw a diamond — decision/merge node (``filled``: the v2 start
+    node's solid diamond)."""
+    if filled:
+        for dy in range(-size, size + 1):
+            span = size - abs(dy)
+            for dx in range(-span, span + 1):
+                if abs(dx) + abs(dy) <= size:
+                    c.set(cx + dx, cy + dy)
+    else:
+        pts = [(cx, cy - size), (cx + size, cy), (cx, cy + size),
+               (cx - size, cy)]
+        for i in range(4):
+            x1, y1 = pts[i]
+            x2, y2 = pts[(i + 1) % 4]
+            for px, py in line(x1, y1, x2, y2):
+                c.set(px, py)
     if name:
         c.set_text(cx - len(name), cy - 2, name)
 
@@ -1237,7 +1246,7 @@ def draw_diagram_frame(c, x1, y1, x2, y2, header):
     c.set_text(x1 + 3, y1 + 4, header)
 
 
-def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, rounded=False, dashed=False, compartments=None, folder=False):
+def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, rounded=False, dashed=False, compartments=None, folder=False, chamfer=0):
     """Draw a rectangular classifier box with centered text.
 
     The box has four borders. Inside it renders (top to bottom):
@@ -1261,9 +1270,24 @@ def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, r
         Draw border with dashed lines.
     folder : bool, optional
         Draw the package folder tab on the upper-left side (§10.4).
+    chamfer : int, optional
+        45-degree corner cut (v2 action usage octagon, §7.6.2 of the
+        Intro deck) — wins over ``rounded`` when > 0.
     """
     dl = _draw_dashed_line if dashed else None
-    if rounded:
+    if chamfer:
+        ch = min(chamfer, (x2 - x1) // 4, (y2 - y1) // 4)
+        o = [(x1 + ch, y1), (x2 - ch, y1), (x2, y1 + ch), (x2, y2 - ch),
+             (x2 - ch, y2), (x1 + ch, y2), (x1, y2 - ch), (x1, y1 + ch)]
+        for i in range(8):
+            ax, ay = o[i]
+            bx, by = o[(i + 1) % 8]
+            if dashed:
+                _draw_dashed_line(c, ax, ay, bx, by)
+            else:
+                for px, py in line(ax, ay, bx, by):
+                    c.set(px, py)
+    elif rounded:
         r = min(ROUNDED_RADIUS, (x2 - x1) // 4, (y2 - y1) // 4)
         if dashed:
             _draw_dashed_line(c, x1 + r, y1, x2 - r, y1)
