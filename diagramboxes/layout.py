@@ -1069,6 +1069,15 @@ class StateNode(Node):
                          attributes=attributes, rounded=True, dashed=dashed)
         self.substates = list(substates) if substates else []
 
+    def add_internal(self, text):
+        """Add an internal behavior or internal transition row (§8.4.1 /
+        §8.5.1) to this state's second compartment:
+        ``entry / ...``, ``exit / ...``, ``do / ...``, or an internal
+        transition string like ``when (...) / purgeOldestDataFiles``."""
+        self.attributes = list(self.attributes or []) + [text]
+        self._calc_size()
+        return self
+
 
 class View:
     """A view / package node with a folder-tab label area.
@@ -2162,6 +2171,57 @@ class Diagram:
         self.nodes.append(n)
         return n
 
+    def composite_state(self, name, entry=None, exit=None, do=None,
+                        stereotypes=None, substates=None,
+                        parent=None, dashed=False):
+        """Add a composite state (§8.4.2): a round-cornered state with
+        the optional entry/exit/do internal compartment (§8.4.1) ready
+        to hold nested substates (``add_child`` or draw them inside).
+
+        Returns
+        -------
+        StateNode
+        """
+        internals = []
+        if entry:
+            internals.append('entry / %s' % entry)
+        if exit:
+            internals.append('exit / %s' % exit)
+        if do:
+            internals.append('do / %s' % do)
+        return self.add_state(name, stereotypes=stereotypes,
+                              attributes=internals, substates=substates,
+                              dashed=dashed)
+
+    def transition(self, source, target, trigger=None, guard=None,
+                   effect=None, **kw):
+        """Add a state-machine transition (§8.5): a solid line with an
+        open arrowhead carrying the floating string
+        ``<trigger> [<guard>] / <effect>`` — each part optional, order
+        fixed.  For the keyword form pass already-formatted pieces:
+
+        >>> d.transition(offline, online,
+        ...              trigger='startUp(sensorID)',
+        ...              guard='isPowerAvailable == True',
+        ...              effect='calibrate')
+
+        Returns
+        -------
+        Edge
+        """
+        parts = []
+        if trigger:
+            parts.append(trigger)
+        if guard:
+            parts.append('[%s]' % guard)
+        if effect:
+            parts.append('/ %s' % effect)
+        kw.setdefault('target_style', 'open')
+        label = kw.pop('label', None)
+        if parts:
+            label = ' '.join(parts)
+        return self.add_edge(source, target, label=label, **kw)
+
     def add_entry_point(self, state, label, side='left', offset=None,
                         direction=None):
         """Attach an :class:`EntryPoint` (hollow boundary circle) to *state*.
@@ -3091,6 +3151,17 @@ class Diagram:
     def _route_orthogonal(self, e, layer_of, layers, gap_used=None):
         if e.source_port and e.target_port:
             self._port_route(e)
+            return
+
+        # §8.5 self-transition: an arrow from a state back to itself —
+        # out of the right side, down, back into the lower edge
+        if e.source is e.target:
+            s = e.source
+            sx, sy = s.x + s.w, s.y + s.h // 2
+            ch = s.x + s.w + 20
+            bx = s.x + s.w * 3 // 4
+            ly = s.y + s.h
+            e.route((sx, sy), (ch, sy), (ch, ly), (bx, ly))
             return
 
         sl = layer_of.get(e.source, 0)
