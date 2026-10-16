@@ -812,9 +812,17 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                                              base + i * 6, wrow * 2))
 
                 if e.source_label:
-                    _stacked(e.source_label, spos)
+                    _stacked(e.source_label,
+                             clear_label_pos(spos, len(str(e.source_label)),
+                                             keep_away, used_labels,
+                                             anchor='start' if vert
+                                             else 'middle'))
                 if e.target_label:
-                    _stacked(e.target_label, tpos)
+                    _stacked(e.target_label,
+                             clear_label_pos(tpos, len(str(e.target_label)),
+                                             keep_away, used_labels,
+                                             anchor='start' if vert
+                                             else 'middle'))
         if getattr(e, 'item_flow', None):
             r = route_point_at([(sx, sy), (tx, ty)],
                                getattr(e, 'item_position', 0.5))
