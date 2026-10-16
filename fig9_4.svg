@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-9.0 -3.0 1261.0 2359.0" width="1261.0pt" height="2359.0pt">
+<rect x="6.0" y="1320.0" width="1201.5" height="991.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<g>
+<polygon points="6.0,1320.0 1129.4,1320.0 1135.4,1326.0 1135.4,1335.0 6.0,1335.0" fill="white" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="10.5" y="1330.5" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="start">par [block] Transfer Time Analysis [Constraint Parameter-Value Property Bindings]</text>
+</g>
+<rect x="276.0" y="1347.0" width="114.0" height="54.0" stroke-dasharray="9.0,6.0" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="333.0" y="1359.0" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">earth : Gravitational Body</text>
+<rect x="313.5" y="1459.5" width="102.0" height="19.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="364.5" y="1471.5" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">gravitationalParameter :
+km³/s²</text>
+<rect x="1027.5" y="1347.0" width="150.0" height="88.5" stroke-dasharray="9.0,6.0" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="1102.5" y="1359.0" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">systemOfinterest :
+DellSat-77 Satellite</text>
+<rect x="1063.5" y="1497.0" width="138.0" height="54.0" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="1132.5" y="1509.0" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">aocs :
+Attitude and Orbit
+Control Subsystem</text>
+<rect x="1101.0" y="1683.0" width="78.0" height="19.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="1140.0" y="1695.0" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">currentOrbitRadius : km</text>
+<rect x="450.0" y="1647.0" width="108.0" height="19.5" rx="4.5" ry="4.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="504.0" y="1659.0" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">ht : Hohmann Transfer : </text>
+<rect x="276.0" y="2173.5" width="57.0" height="19.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="304.5" y="2185.5" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">timeOfFlight : s</text>
+<rect x="276.0" y="2286.0" width="246.0" height="19.5" fill="#f0f0f0" stroke="#1a1a1a" stroke-width="1.5" />
+<text x="399.0" y="2298.0" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="middle">systemOfinterest.cdhs.primaryComputer.currentCommand.orderedOrbitRadius : km : </text>
+<rect x="523.5" y="1647.0" width="12.0" height="12.0" fill="white" stroke="#1a1a1a" stroke-width="1.5" />
+<g>
+<rect class="halo" x="536.7" y="1649.8" width="96.6" height="9.3" fill="white" />
+<text x="538.5" y="1656.0" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="start">gravitationalParameter : km³/s²</text>
+</g>
+<rect x="450.0" y="1651.5" width="12.0" height="12.0" fill="white" stroke="#1a1a1a" stroke-width="1.5" />
+<g>
+<rect class="halo" x="463.2" y="1654.2" width="51.6" height="9.3" fill="white" />
+<text x="465.0" y="1660.5" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="start">timeOfFlight : s</text>
+</g>
+<rect x="546.0" y="1654.5" width="12.0" height="12.0" fill="white" stroke="#1a1a1a" stroke-width="1.5" />
+<g>
+<rect class="halo" x="472.2" y="1657.2" width="72.6" height="9.3" fill="white" />
+<text x="543.0" y="1663.5" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="end">initialOrbitRadius : km</text>
+</g>
+<rect x="496.5" y="1654.5" width="12.0" height="12.0" fill="white" stroke="#1a1a1a" stroke-width="1.5" />
+<g>
+<rect class="halo" x="509.7" y="1657.2" width="66.6" height="9.3" fill="white" />
+<text x="511.5" y="1663.5" fill="#1a1a1a" font-size="5.0" font-family="Helvetica, DejaVu Sans, sans-serif" text-anchor="start">finalOrbitRadius : km</text>
+</g>
+<polyline points="529.5,1647.0 351.0,1401.0" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<polyline points="450.0,1657.5 306.0,2173.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<polyline points="558.0,1660.5 1027.5,1426.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+<polyline points="502.5,1666.5 400.5,2286.0" stroke="#1a1a1a" stroke-width="1.5" fill="none" />
+</svg>

@@ -1663,17 +1663,20 @@ class Diagram:
         n = self.add_node('%s : %s' % (name, type_), rounded=True)
         return n
 
-    def par_value(self, name, type_, mult=None, default=None):
+    def par_value(self, name, type_, mult=None, default=None, at=None):
         """Value property (§9.7): plain-rectangle node with the string
         ``<value name> : <type> [<mult>] = <default>``. Valid only when
         the frame represents a BLOCK (constraint blocks cannot own value
         properties)."""
-        parts = '%s : %s' % (name, type_)
+        parts = ('%s : %s' % (name, type_)) if type_ else name
         if mult is not None:
             parts += ' [%s]' % mult
         if default is not None:
             parts += ' = %s' % default
-        return self.add_node(parts)
+        n = self.add_node(parts)
+        if at is not None:
+            n.at = tuple(at)
+        return n
 
     def par_param(self, name, type_='', owner=None, side='left',
                   offset=0.5):
@@ -3731,9 +3734,22 @@ class Diagram:
                     my = (so[1] + to_[1]) // 2
                     e.waypoints = [so, (so[0], my), (to_[0], my), to_]
             elif t_p and not s_p:
-                e.waypoints = [_out_face(t), _dock_point(s, (t.cx, t.cy))]
+                face = _out_face(t)
+                dock = _dock_point(s, (t.cx, t.cy))
+                if t.side in ('top', 'bottom'):
+                    # Fig 9.4: the value's leg runs HORIZONTAL at the
+                    # value's docking row, then bends vertically into
+                    # the square's outward face
+                    e.waypoints = [face, (face[0], dock[1]), dock]
+                else:
+                    e.waypoints = [face, (dock[0], face[1]), dock]
             elif s_p:
-                e.waypoints = [_out_face(s), _dock_point(t, (s.cx, s.cy))]
+                face = _out_face(s)
+                dock = _dock_point(t, (s.cx, s.cy))
+                if s.side in ('top', 'bottom'):
+                    e.waypoints = [face, (face[0], dock[1]), dock]
+                else:
+                    e.waypoints = [face, (dock[0], face[1]), dock]
 
     def render(self, c=None, routing='orthogonal', layer_gap=50, node_gap=12, margin=8):
         if c is None:
