@@ -70,6 +70,10 @@ class TestEndLabelOutsideBox(unittest.TestCase):
                      r'<rect[^>]*?x="([\d.]+)" y="([\d.]+)" '
                      r'width="([\d.]+)" height="([\d.]+)"', svg)]
         boxes = [r for r in rects if r[2] > 40 and r[3] > 18]
+        # the diagram FRAME is not a block: drop the outermost rect
+        if boxes:
+            outer = max(boxes, key=lambda r: r[2] * r[3])
+            boxes = [r for r in boxes if r is not outer]
         END_LABELS = ('primaryComputer 1', 'backupComputer 1..2', '0..1',
                       'eps 1', 'aocs 1', 'ecs 1', 'cdhs 1', 'mod 1',
                       'tx 1', '2..3')

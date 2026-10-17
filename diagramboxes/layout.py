@@ -39,7 +39,7 @@ from diagramboxes.primitives import draw_polyline, draw_relation, draw_class_box
     draw_seq_constraint, \
     draw_par_param, draw_usecase_node, draw_actor_stick, \
     draw_send_signal_node, draw_accept_event_node, draw_wait_time_node, \
-    draw_rake, draw_region_box, draw_cube_facets, \
+    draw_rake, draw_region_box, draw_cube_facets, _orthogonal_departs, \
     draw_line, draw_arrowhead, edge_end_label_positions
 from diagramboxes.svg_canvas import SvgCanvas, svg_draw_edge, svg_draw_node, svg_draw_port, svg_port_label, svg_draw_comment, svg_draw_view, \
     svg_draw_start_node, svg_draw_done_node, svg_draw_terminate_node, \
@@ -2767,7 +2767,7 @@ class Diagram:
             ty = e.target.y
             e.route((sx, sy), (tx, ty))
         else:
-            e.route((e.source.cx, e.source.cy), (e.target.cx, e.target.cy))
+            e.route(*_orthogonal_departs(e.source, e.target))
 
     # ── orthogonal (Manhattan) routing ──
 
@@ -3161,6 +3161,15 @@ class Diagram:
             return all(not self._segment_hits(
                 x1, y1, x2, y2, obstacles)[0] for x1, y1, x2, y2 in segs)
 
+        # a true DIAGONAL (neither the same row nor the same x-band):
+        # depart/arrive orthogonally — the gallery review's corner-slip
+        # rule applies to pinned layouts too
+        same_row = abs(s.cy - t.cy) < max(s.h, t.h) and abs(s.cx - t.cx) > 40
+        vertical = abs(s.cx - t.cx) <= max(12, min(s.w, t.w))
+        if not same_row and not vertical:
+            self._route_pinned_straight(e)
+            return
+
         if s is t:
             # self-association (e.g. a nested-usage role on itself):
             # out of the right side, down, back into the lower right
@@ -3218,6 +3227,12 @@ class Diagram:
             if not picked:
                 channel = base
             e.route((sx, sy), (channel, sy), (channel, ty), (tx, ty))
+
+    def _route_pinned_straight(self, e):
+        """Pinned diagonal pair: depart orthogonally from a side of the
+        source (a border anchor + a stub), run the diagonal, arrive
+        orthogonally at the target — never slide out of a corner."""
+        e.route(*_orthogonal_departs(e.source, e.target))
 
     def _route_orthogonal(self, e, layer_of, layers, gap_used=None):
         if e.source_port and e.target_port:

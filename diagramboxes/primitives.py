@@ -1372,3 +1372,30 @@ def draw_class_box(c, x1, y1, x2, y2, name, stereotypes=None, attributes=None, r
         else:
             x = box_cx - len(txt)
             c.set_text(x, y, txt)
+
+def _orthogonal_departs(source, target, stub=14):
+    """Anchor a straight edge orthogonally: it departs PERPENDICULAR to
+    a side of the source, runs the diagonal, and arrives perpendicular
+    to a side of the target — never slides out of a corner (gallery
+    review: links leaving/arriving on geometric corners)."""
+    sx0, sy0 = source.cx, source.cy
+    tx0, ty0 = target.cx, target.cy
+    dx, dy = tx0 - sx0, ty0 - sy0
+
+    def _border(node, toward_x, toward_y, dom_x):
+        if dom_x:
+            ux = (1 if toward_x > 0 else -1), 0
+            return ((node.x + node.w if toward_x > 0 else node.x), node.cy,
+                    ux[0], ux[1])
+        uy = 0, (1 if toward_y > 0 else -1)
+        return (node.cx, (node.y + node.h if toward_y > 0 else node.y),
+                uy[0], uy[1])
+
+    dom_x = abs(dx) >= abs(dy)
+    sx, sy, sdx, sdy = _border(source, dx, dy, dom_x)
+    tx, ty, tdx, tdy = _border(target, -dx, -dy, dom_x)
+    if dom_x:
+        return [(sx, sy), (sx + sdx * stub, sy),
+                (tx - tdx * stub, ty), (tx, ty)]
+    return [(sx, sy), (sx, sy + sdy * stub),
+            (tx, ty - tdy * stub), (tx, ty)]

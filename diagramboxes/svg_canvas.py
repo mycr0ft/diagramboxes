@@ -36,6 +36,8 @@ layout.py      : Diagram.render_svg() calls these functions
 """
 
 from math import atan2, cos, sin, pi
+
+from diagramboxes.primitives import _orthogonal_departs
 from xml.sax.saxutils import escape
 
 # proportional font stack for SVG text (drawille-compatible char metrics
@@ -763,30 +765,34 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None, forbidden=None):
                     (bx - cos(hp) * hw, by - sin(hp) * hw),
                 ], fill='black')
     else:
-        # Fallback straight line
-        sx, sy = e.source.cx, e.source.cy
-        tx, ty = e.target.cx, e.target.cy
-        dx_total, dy_total = tx - sx, ty - sy
+        # Fallback straight line — anchored orthogonally: the edge
+        # departs perpendicular to a side, runs the diagonal, arrives
+        # perpendicular to a side (never slides out of a corner)
+        (sx, sy), (xs, ys), (xt, yt), (tx, ty) = _orthogonal_departs(
+            e.source, e.target)
+        dx_total, dy_total = tx - xt, ty - yt
         length = max(1, (dx_total * dx_total + dy_total * dy_total) ** 0.5)
 
-        lsx, lsy = sx, sy
+        lsx, lsy, ltx, lty = sx, sy, xt, yt
         if e.source_style and e.source_style != NONE:
             bo = _arrow_backoff(e.source_style)
             if bo:
-                lsx = sx + dx_total / length * bo
-                lsy = sy + dy_total / length * bo
+                lsx = sx + (xs - sx) / 14.0 * bo
+                lsy = sy + (ys - sy) / 14.0 * bo
 
-        ltx, lty = tx, ty
         if e.target_style and e.target_style != NONE:
             bo = _arrow_backoff(e.target_style)
             if bo:
-                ltx = tx - dx_total / length * bo
-                lty = ty - dy_total / length * bo
+                ltx = xt - (xt - tx) / 14.0 * bo
+                lty = yt - (yt - ty) / 14.0 * bo
 
         dashed = e.line_style == DASHED
-        c.add_line(lsx, lsy, ltx, lty, dashed=dashed)
+        c.add_line(lsx, lsy, xs, ys, dashed=dashed)
+        if (xs, ys) != (xt, yt):
+            c.add_line(xs, ys, xt, yt, dashed=dashed)
+        c.add_line(xt, yt, ltx, lty, dashed=dashed)
 
-        angle = atan2(ty - sy, tx - sx)
+        angle = atan2(ty - yt, tx - xt)
         target_angle = angle
         if e.target_style in (CIRCLE, UNOWNED, CIRCLED_PLUS):
             node_angle = _node_outward_angle(tx, ty, e.target)
