@@ -3161,15 +3161,6 @@ class Diagram:
             return all(not self._segment_hits(
                 x1, y1, x2, y2, obstacles)[0] for x1, y1, x2, y2 in segs)
 
-        # a true DIAGONAL (neither the same row nor the same x-band):
-        # depart/arrive orthogonally — the gallery review's corner-slip
-        # rule applies to pinned layouts too
-        same_row = abs(s.cy - t.cy) < max(s.h, t.h) and abs(s.cx - t.cx) > 40
-        vertical = abs(s.cx - t.cx) <= max(12, min(s.w, t.w))
-        if not same_row and not vertical:
-            self._route_pinned_straight(e)
-            return
-
         if s is t:
             # self-association (e.g. a nested-usage role on itself):
             # out of the right side, down, back into the lower right
@@ -3180,24 +3171,36 @@ class Diagram:
             e.route((sx, sy), (ch, sy), (ch, ly), (bx, ly))
             return
         if abs(s.cy - t.cy) < max(s.h, t.h) and abs(s.cx - t.cx) > 40:
-            # same row — anchor the facing vertical sides
+            # same row — anchor the facing vertical sides and run a
+            # 4-leg ORTHOGONAL channel: horizontal at the source row,
+            # vertical at a mid-x, horizontal into the target row. The
+            # old (sx,sy)->(tx,base)->(tx,ty) mixed legs into diagonals
+            # whenever the dodge differed from the row (fig3_1 eps-cdhs).
             if s.cx < t.cx:
                 sx, sy, tx, ty = s.x + s.w, s.cy, t.x, t.cy
             else:
                 sx, sy, tx, ty = s.x, s.cy, t.x + t.w, t.cy
-            base = (sy + ty) // 2
+            if sy == ty:
+                e.route((sx, sy), (tx, ty))
+                return
+            xlo, xhi = (sx, tx) if sx < tx else (tx, sx)
+            base = (sx + tx) // 2
             channel, picked = None, False
-            if base == sy:
-                channel, picked = sy, True   # straight across the row
-            for off in range(1, int(abs(s.cx - t.cx)) // 3 + 2):
-                for cy2 in (base - off * 3, base + off * 3):
-                    if _clear([(sx, sy, tx, cy2), (tx, cy2, tx, ty)]):
-                        channel, picked = cy2, True
+            if _clear([(sx, sy, base, sy), (base, sy, base, ty),
+                       (base, ty, tx, ty)]):
+                channel, picked = base, True
+            for off in range(1, int((xhi - xlo) // 3) + 2):
+                for mx in (base - off * 3, base + off * 3):
+                    if not (xlo < mx < xhi):
+                        continue
+                    if _clear([(sx, sy, mx, sy), (mx, sy, mx, ty),
+                               (mx, ty, tx, ty)]):
+                        channel, picked = mx, True
                         break
                 if picked:
                     break
-            e.route((sx, sy), (tx, base if channel is None else channel),
-                    (tx, ty))
+            e.route((sx, sy), (channel if picked else base, sy),
+                    (channel if picked else base, ty), (tx, ty))
         else:
             # vertical ladder — anchor the facing top/bottom sides.
             # box() gives the token-anchor extent (WaitTimeNode's box()
