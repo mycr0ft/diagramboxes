@@ -530,7 +530,7 @@ def svg_seq_constraint(c, li, con):
 
 # ── High-level drawing functions for diagrams ──
 
-def svg_draw_edge(c, e, keep_away=None, used_labels=None):
+def svg_draw_edge(c, e, keep_away=None, used_labels=None, forbidden=None):
     """Draw an edge (with or without waypoints) onto an SvgCanvas.
     
     keep_away : set of (x, y) tuples — points to avoid for label placement.
@@ -692,11 +692,11 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
         # and anchor OUTSIDE the endpoint so the stack never sits on the
         # box it names (Fig 15: the inward anchor erases the box's text)
         spos, tpos = edge_end_label_positions(pts)
-        for lab, pos, vert, outward in (
+        for lab, pos, vert, outward, endpoint in (
                 (e.source_label, spos, pts[0][0] == pts[1][0],
-                 (pts[0], pts[1])),
+                 (pts[0], pts[1]), e.source),
                 (e.target_label, tpos, pts[-1][0] == pts[-2][0],
-                 (pts[-1], pts[-2]))):
+                 (pts[-1], pts[-2]), e.target)):
             if not lab or pos is None:
                 continue
             rows = str(lab).split('\n')
@@ -705,11 +705,27 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                           outward[0][1] - outward[1][1])
                 L = (dx * dx + dy * dy) ** 0.5 or 1
                 pos = (pos[0] - dx / L * 22, pos[1] - dy / L * 22)
+            elif endpoint is not None and getattr(endpoint, 'w', 0) > 0:
+                # single-row label: an anchor landing inside the
+                # endpoint's box prints ON the block (fig3_1: the
+                # 'primaryComputer 1' collision with the Flight
+                # Computer title) — push out through the nearest border
+                nx, ny = endpoint.x, endpoint.y
+                nw, nh = endpoint.w, endpoint.h
+                lx, ly = pos
+                if nx - 6 <= lx <= nx + nw + 6 and ny - 9 <= ly <= ny + nh + 9:
+                    dists = ((lx - nx, -8 - (lx - nx), 0),
+                             (nx + nw - lx, 8 + (nx + nw - lx), 0),
+                             (ly - ny, 0, -9 - (ly - ny)),
+                             (ny + nh - ly, 0, 9 + (ny + nh - ly)))
+                    _, ox, oy = min(dists, key=lambda t: t[0])
+                    pos = (lx + ox, ly + oy)
 
             def _place(p):
                 return clear_label_pos(p, max(len(r) for r in rows),
                                        keep_away, used_labels,
-                                       anchor='start' if vert else 'middle')
+                                       anchor='start' if vert else 'middle',
+                                       forbidden=forbidden)
             pos = _place(pos)
             base = pos[1] - (len(rows) - 1) * 6
             for i, row in enumerate(rows):
@@ -818,6 +834,29 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                 c.add_label(mx, my - 6, e.label, anchor='middle')
         if e.source_label or e.target_label:
             spos, tpos = edge_end_label_positions([(sx, sy), (tx, ty)])
+
+            def _out_of_box(pos, endpoint):
+                """Push an end-label anchor OUT of the endpoint's box
+                (same rule as the routed path: the 'primaryComputer 1'
+                collision — an anchor landing inside the box prints on
+                the block's title)."""
+                if (pos is None or endpoint is None
+                        or getattr(endpoint, 'w', 0) <= 0):
+                    return pos
+                nx, ny = endpoint.x, endpoint.y
+                nw, nh = endpoint.w, endpoint.h
+                lx, ly = pos
+                if nx - 6 <= lx <= nx + nw + 6 and ny - 9 <= ly <= ny + nh + 9:
+                    dists = ((lx - nx, -8 - (lx - nx), 0),
+                             (nx + nw - lx, 8 + (nx + nw - lx), 0),
+                             (ly - ny, 0, -9 - (ly - ny)),
+                             (ny + nh - ly, 0, 9 + (ny + nh - ly)))
+                    _, ox, oy = min(dists, key=lambda t: t[0])
+                    return (lx + ox, ly + oy)
+                return pos
+
+            spos = _out_of_box(spos, e.source)
+            tpos = _out_of_box(tpos, e.target)
             if spos is not None and tpos is not None and (sx != tx or sy != ty):
                 vert = sx == tx
 
@@ -839,18 +878,15 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
                                              else pos[0] - wrow,
                                              base + i * 6, wrow * 2))
 
+                def _clear(p, lab, vert_):
+                    return clear_label_pos(p, len(str(lab)),
+                                           keep_away, used_labels,
+                                           anchor='start' if vert_
+                                           else 'middle', forbidden=forbidden)
                 if e.source_label:
-                    _stacked(e.source_label,
-                             clear_label_pos(spos, len(str(e.source_label)),
-                                             keep_away, used_labels,
-                                             anchor='start' if vert
-                                             else 'middle'))
+                    _stacked(e.source_label, _clear(spos, e.source_label, vert))
                 if e.target_label:
-                    _stacked(e.target_label,
-                             clear_label_pos(tpos, len(str(e.target_label)),
-                                             keep_away, used_labels,
-                                             anchor='start' if vert
-                                             else 'middle'))
+                    _stacked(e.target_label, _clear(tpos, e.target_label, vert))
         if getattr(e, 'item_flow', None):
             r = route_point_at([(sx, sy), (tx, ty)],
                                getattr(e, 'item_position', 0.5))

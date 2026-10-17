@@ -637,14 +637,18 @@ def draw_polyline(c, points, line_style=SOLID, source=None, target=None, label=N
 
 # ── shared label placement ──
 
-def clear_label_pos(pos, w_units, keep_away=None, used_labels=None, anchor='middle'):
+def clear_label_pos(pos, w_units, keep_away=None, used_labels=None,
+                    anchor='middle', forbidden=None):
     """Collision-aware label placement: try small offsets until ``pos``
-    is clear of other edges' paths (``keep_away``) and of already-placed
-    labels. ``used_labels`` holds (x_left, y, width) spans and registers
-    the winning position. Figure 3.1 review: parallel edges' end labels
-    must not overprint."""
+    is clear of other edges' paths (``keep_away``), of already-placed
+    labels (``used_labels`` holds (x_left, y, width) spans and registers
+    the winning position) and of any FORBIDDEN RECT (x, y, w, h) — the
+    nodes' boxes: fig3_1's review found the end-label dodging printing
+    '0..1' ON the DellSat-77 box interior."""
     offsets = [(0, 0), (0, -8), (0, 8), (10, 0), (-10, 0),
-               (0, 16), (0, -16), (-18, 0), (18, 0), (0, 24)]
+               (0, 16), (0, -16), (-18, 0), (18, 0),
+               (0, 24), (0, -24), (0, -32), (0, 32), (-28, 0), (28, 0),
+               (0, -40), (0, 40)]
     for ox, oy in offsets:
         p2 = (pos[0] + ox, pos[1] + oy)
         if any(abs(p2[0] - q[0]) < 14 and abs(p2[1] - q[1]) < 6
@@ -653,6 +657,9 @@ def clear_label_pos(pos, w_units, keep_away=None, used_labels=None, anchor='midd
         x_left = p2[0] - (w_units / 2 if anchor == 'middle' else 0)
         if any(not (x_left + w_units < q[0] - 2 or x_left > q[0] + q[2] + 2)
                and abs(p2[1] - q[1]) < 6 for q in (used_labels or ())):
+            continue
+        if any(bx - 5 <= p2[0] <= bx + bw + 5 and by - 9 <= p2[1] <= by + bh + 9
+               for bx, by, bw, bh in (forbidden or ())):
             continue
         if used_labels is not None:
             used_labels.add((x_left, p2[1], w_units))

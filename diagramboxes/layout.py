@@ -4331,7 +4331,9 @@ class Diagram:
             if self._is_visual_containment(e):
                 continue
             svg_draw_edge(c, e, keep_away=all_path_px - set(e.waypoints),
-                          used_labels=svg_used_labels)
+                          used_labels=svg_used_labels,
+                          forbidden=[(n.x, n.y, n.w, n.h)
+                                     for n in self.nodes])
         for p in self.frame_ports:
             for i in p.interfaces:
                 svg_draw_interface(c, i)
