@@ -1602,12 +1602,12 @@ class Diagram:
         requirement is satisfied (§11.5)."""
         return self._req_edge(client, supplier, 'verify')
 
-    def add_package(self, name, stereotypes=None):
+    def add_package(self, name, stereotypes=None, attributes=None):
         """Create a package node — folder symbol with the tab (§10.4);
         specialized kinds pass their keyword in ``stereotypes`` (e.g.
         ``['modelLibrary']``, ``['view']``)."""
         st = ['package'] + list(stereotypes or [])
-        return self.add_node(name, st)
+        return self.add_node(name, st, attributes=attributes or [])
 
     def pkg_contain(self, namespace, contained):
         """Crosshair namespace containment (§10.4): a solid line with a

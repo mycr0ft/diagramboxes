@@ -621,13 +621,41 @@ def svg_draw_edge(c, e, keep_away=None, used_labels=None):
 
         # Label at midpoint
         if e.label:
+            keep_away = keep_away or set()
+            placed = False
+            if len(pts) == 2:
+                # STRAIGHT edge: geometric midpoint + a PERPENDICULAR
+                # offset so the label hugs its line (a Manhattan-length
+                # midpoint on a long diagonal drifts along the line,
+                # and the axis-aligned keep-away cascade slides a fanned
+                # family of labels into one distant band — the fig10_3
+                # defect: five «import» labels all ~40 units high)
+                x1, y1 = pts[0]
+                x2, y2 = pts[1]
+                mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+                L = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** .5 or 1
+                nx, ny = -(y2 - y1) / L, (x2 - x1) / L   # unit perpendicular
+                cands = [(mx + nx * 9, my + ny * 9),
+                         (mx - nx * 9, my - ny * 9),
+                         (mx + nx * 18, my + ny * 18),
+                         (mx - nx * 18, my - ny * 18)]
+                for pos in cands:
+                    if not any(abs(pos[0] - p[0]) < 12 and
+                               abs(pos[1] - p[1]) < 12 for p in keep_away):
+                        lx, ly = pos
+                        placed = True
+                        break
+                if not placed:
+                    lx, ly = cands[0]
+                c.add_label(lx, ly, e.label, anchor='middle')
+                if used_labels is not None:
+                    used_labels.add((lx - len(e.label), ly, len(e.label) * 2))
             total = sum(abs(pts[i + 1][0] - pts[i][0]) +
                         abs(pts[i + 1][1] - pts[i][1])
                         for i in range(len(pts) - 1))
             target = total // 2
             acc = 0
-            keep_away = keep_away or set()
-            for i in range(len(pts) - 1):
+            for i in range(len(pts) - 1) if not placed else ():
                 x1, y1 = pts[i]
                 x2, y2 = pts[i + 1]
                 seg = abs(x2 - x1) + abs(y2 - y1)
