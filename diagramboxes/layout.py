@@ -3216,20 +3216,28 @@ class Diagram:
             if abs(sx - tx) <= 12:
                 e.route((sx, sy), (tx, ty))   # aligned: direct
                 return
-            base = (sx + tx) // 2
+            # Y-CHANNEL ladder: exit PERPENDICULAR from the departed box
+            # (a vertical leg with clearance), cross the free band
+            # horizontally, enter perpendicular. A dodge along the box's
+            # wall line reads as attachment along the outline (gallery
+            # review: 'leaving the box along the wall').
+            ylo, yhi = (sy, ty) if sy < ty else (ty, sy)
+            base = (sy + ty) // 2
             channel, picked = None, False
-            for off in range(0, int(abs(sx - tx)) // 3 + 2):
-                for cx2 in ([base] if off == 0 else
-                            [base - off * 3, base + off * 3]):
-                    if _clear([(sx, sy, cx2, sy), (cx2, sy, cx2, ty),
-                               (cx2, ty, tx, ty)]):
-                        channel, picked = cx2, True
+            for off in range(0, int((yhi - ylo) // 3) + 2):
+                for my in ([base] if off == 0 else
+                           [base - off * 3, base + off * 3]):
+                    if not (ylo + 6 < my < yhi - 6):
+                        continue
+                    if _clear([(sx, sy, sx, my), (sx, my, tx, my),
+                               (tx, my, tx, ty)]):
+                        channel, picked = my, True
                         break
                 if picked:
                     break
             if not picked:
                 channel = base
-            e.route((sx, sy), (channel, sy), (channel, ty), (tx, ty))
+            e.route((sx, sy), (sx, channel), (tx, channel), (tx, ty))
 
     def _route_pinned_straight(self, e):
         """Pinned diagonal pair: depart orthogonally from a side of the
@@ -3786,19 +3794,46 @@ class Diagram:
                 face = _out_face(t)
                 dock = _dock_point(s, (t.cx, t.cy))
                 if t.side in ('top', 'bottom'):
-                    # Fig 9.4: the value's leg runs HORIZONTAL at the
-                    # value's docking row, then bends vertically into
-                    # the square's outward face
-                    e.waypoints = [face, (face[0], dock[1]), dock]
+                    # Fig 9.4: the arrival is VERTICAL into the square's
+                    # outward face. The docking row still gets a
+                    # perpendicular clearance stub so the horizontal run
+                    # never hugs the value's own wall (or the enclosing
+                    # reference's) — the review's 'along the wall'
+                    # defect. Perfectly aligned pairs stay straight.
+                    if dock[0] == face[0] or dock[1] == face[1]:
+                        e.waypoints = [face, dock]
+                    else:
+                        sy2 = face[1] + (10 if t.side == 'top' else -10)
+                        fx = face[0] if s.cx > t.cx else dock[0]
+                        e.waypoints = [face, (face[0], sy2),
+                                       (fx, sy2), (fx, dock[1]), dock]
                 else:
-                    e.waypoints = [face, (dock[0], face[1]), dock]
+                    if dock[0] == face[0] or dock[1] == face[1]:
+                        e.waypoints = [face, dock]
+                    else:
+                        sx2 = face[0] + (10 if t.side == 'right' else -10)
+                        fy = face[1] if s.cy > t.cy else dock[1]
+                        e.waypoints = [face, (sx2, face[1]),
+                                       (sx2, fy), (dock[0], fy), dock]
             elif s_p:
                 face = _out_face(s)
                 dock = _dock_point(t, (s.cx, s.cy))
                 if s.side in ('top', 'bottom'):
-                    e.waypoints = [face, (face[0], dock[1]), dock]
+                    if dock[0] == face[0] or dock[1] == face[1]:
+                        e.waypoints = [dock, face]
+                    else:
+                        sy2 = face[1] + (10 if s.side == 'top' else -10)
+                        fx = face[0] if t.cx > s.cx else dock[0]
+                        e.waypoints = [dock, (dock[0], sy2),
+                                       (fx, sy2), (fx, face[1]), face]
                 else:
-                    e.waypoints = [face, (dock[0], face[1]), dock]
+                    if dock[0] == face[0] or dock[1] == face[1]:
+                        e.waypoints = [dock, face]
+                    else:
+                        sx2 = face[0] + (10 if s.side == 'right' else -10)
+                        fy = face[1] if t.cy > s.cy else dock[1]
+                        e.waypoints = [dock, (sx2, dock[1]),
+                                       (sx2, fy), (face[0], fy), face]
 
     def render(self, c=None, routing='orthogonal', layer_gap=50, node_gap=12, margin=8):
         if c is None:
